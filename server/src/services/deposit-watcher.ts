@@ -76,12 +76,12 @@ async function logDeposit(
   if (!db) return;
   await db.from('deposits').insert({
     player_id: playerId,
-    address,
+    from_address: address,
+    to_address: 'hot_wallet',
     amount_wei: amountWei.toString(),
     amount_eth: parseFloat(weiToEth(amountWei)),
     tx_hash: txHash,
-    status: 'confirmed',
-    created_at: new Date().toISOString(),
+    confirmed: true,
   });
 }
 

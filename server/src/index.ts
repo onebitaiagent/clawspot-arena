@@ -9,6 +9,7 @@ import { walletRouter } from './routes/wallet';
 import { leaderboardRouter } from './routes/leaderboard';
 import { botRouter } from './routes/bot';
 import { initSupabase } from './services/db';
+import { initEth } from './services/eth';
 import { startDepositWatcher } from './services/deposit-watcher';
 
 const app = express();
@@ -43,6 +44,7 @@ initWebSocket(server);
 
 // Init DB and start
 initSupabase();
+initEth();
 startDepositWatcher();
 
 server.listen(PORT, () => {

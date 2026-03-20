@@ -719,6 +719,14 @@ function handleTap(sx,sy){
   const px=sx*devicePixelRatio,py=sy*devicePixelRatio;
   spawnRipple(px,py,'#ffffff');
   if(game.phase==='title'){
+    // Wallet button
+    if(game._walletBtnRect){
+      const wb=game._walletBtnRect;
+      if(px>=wb.x&&px<=wb.x+wb.w&&py>=wb.y&&py<=wb.y+wb.h){
+        if(typeof openWallet==='function') openWallet();
+        return;
+      }
+    }
     // Check if tapped a specific arena tier button
     const tier = hitTierButton(px, py);
     if (tier) {
@@ -2232,6 +2240,20 @@ function drawTitle() {
     ctx.fillStyle = c;
     ctx.fillText(t, W * 0.08 + (i + 0.5) * (W * 0.84 / 3), stY + 20 * dpr);
   });
+
+  // Wallet button (small, top-right)
+  const wbW = 90 * dpr, wbH = 28 * dpr;
+  const wbX = W - wbW - 12 * dpr, wbY = stY - 36 * dpr;
+  ctx.fillStyle = '#0c0c1a';
+  roundRect(ctx, wbX, wbY, wbW, wbH, 6); ctx.fill();
+  ctx.strokeStyle = '#ffcc0066'; ctx.lineWidth = 1;
+  roundRect(ctx, wbX, wbY, wbW, wbH, 6); ctx.stroke();
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = `bold ${Math.max(10 * dpr, 11)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('\u{1F4B0} WALLET', wbX + wbW / 2, wbY + wbH * 0.65);
+  // Store for tap detection
+  game._walletBtnRect = { x: wbX, y: wbY, w: wbW, h: wbH };
 
   // Free Play button (big, centered)
   const playBtnW = Math.min(240 * dpr, W * 0.6);

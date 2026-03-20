@@ -6,9 +6,79 @@
 <title>ClawSpot Arena — Play</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+.wallet-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(4,4,16,.92);padding:16px;overflow-y:auto;font-family:'Courier New',monospace;color:#ccc}
+.wallet-overlay.show{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:40px}
+.wallet-card{background:#0c0c20;border:1px solid #1a1a30;border-radius:14px;padding:20px;width:100%;max-width:380px;margin-bottom:16px}
+.wallet-title{color:#ffcc00;font-size:14px;font-weight:bold;margin-bottom:12px;letter-spacing:1px}
+.wallet-balance{font-size:28px;font-weight:bold;color:#fff;margin-bottom:4px}
+.wallet-chain{color:#00ff88;font-size:12px;margin-bottom:16px}
+.wallet-label{color:#888;font-size:11px;margin-bottom:4px;margin-top:12px}
+.wallet-addr{background:#080818;border:1px solid #222;border-radius:8px;padding:10px;font-size:12px;color:#00ff88;word-break:break-all;position:relative;cursor:pointer}
+.wallet-addr:active{background:#101028}
+.wallet-addr .copy-hint{position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#555;font-size:10px}
+.wallet-input{background:#080818;border:1px solid #222;border-radius:8px;padding:10px;font-size:14px;color:#fff;width:100%;font-family:inherit;outline:none;margin-top:4px}
+.wallet-input:focus{border-color:#00ff88}
+.wallet-btn{display:block;width:100%;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:bold;cursor:pointer;border:1px solid;margin-top:12px;text-align:center}
+.wallet-btn.green{background:#0d2d14;border-color:#00ff88;color:#00ff88}
+.wallet-btn.red{background:#2a1212;border-color:#ff4444;color:#ff4444}
+.wallet-btn.ghost{background:transparent;border-color:#333;color:#666}
+.wallet-btn:active{opacity:.7}
+.wallet-msg{text-align:center;padding:8px;font-size:12px;border-radius:6px;margin-top:8px}
+.wallet-msg.ok{color:#00ff88;background:#0d2d14}
+.wallet-msg.err{color:#ff4444;background:#2a1212}
+.wallet-qr{text-align:center;margin:12px 0;padding:12px;background:#fff;border-radius:10px;display:inline-block}
+.wallet-close{position:fixed;top:12px;right:16px;color:#666;font-size:24px;cursor:pointer;z-index:1001}
+.wallet-tabs{display:flex;gap:0;margin-bottom:16px;width:100%;max-width:380px}
+.wallet-tab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:bold;cursor:pointer;border-bottom:2px solid #222;color:#666}
+.wallet-tab.active{border-color:#00ff88;color:#00ff88}
+</style>
 </head>
 <body>
 <canvas id="game"></canvas>
+
+<!-- Wallet Overlay -->
+<div class="wallet-overlay" id="walletOverlay">
+  <div class="wallet-close" onclick="closeWallet()">&times;</div>
+
+  <div class="wallet-tabs">
+    <div class="wallet-tab active" onclick="switchTab('deposit')" id="tabDeposit">DEPOSIT</div>
+    <div class="wallet-tab" onclick="switchTab('withdraw')" id="tabWithdraw">WITHDRAW</div>
+  </div>
+
+  <!-- Balance Card -->
+  <div class="wallet-card">
+    <div class="wallet-title">YOUR BALANCE</div>
+    <div class="wallet-balance" id="walletBalance">0.000 ETH</div>
+    <div class="wallet-chain">Base L2</div>
+  </div>
+
+  <!-- Deposit Tab -->
+  <div class="wallet-card" id="depositPanel">
+    <div class="wallet-title">DEPOSIT ETH</div>
+    <p style="font-size:12px;color:#aaa;margin-bottom:12px">Send ETH on <b style="color:#00ff88">Base L2</b> to this address. Your balance updates automatically.</p>
+    <div class="wallet-label">YOUR DEPOSIT ADDRESS</div>
+    <div class="wallet-addr" id="depositAddr" onclick="copyAddr()">
+      Loading...
+      <span class="copy-hint">tap to copy</span>
+    </div>
+    <div id="depositMsg"></div>
+    <p style="font-size:10px;color:#555;margin-top:12px">Only send ETH on Base L2. Other chains will be lost. Min deposit: 0.001 ETH.</p>
+  </div>
+
+  <!-- Withdraw Tab -->
+  <div class="wallet-card" id="withdrawPanel" style="display:none">
+    <div class="wallet-title">WITHDRAW ETH</div>
+    <div class="wallet-label">DESTINATION ADDRESS</div>
+    <input class="wallet-input" id="withdrawAddr" placeholder="0x..." type="text">
+    <div class="wallet-label">AMOUNT (ETH)</div>
+    <input class="wallet-input" id="withdrawAmount" placeholder="0.01" type="number" step="0.001" min="0.001">
+    <button class="wallet-btn red" onclick="doWithdraw()">WITHDRAW</button>
+    <div id="withdrawMsg"></div>
+    <p style="font-size:10px;color:#555;margin-top:12px">Withdrawals are sent on Base L2. Gas fee deducted automatically.</p>
+  </div>
+</div>
+
 <script>
 // Telegram Mini App initialization
 const tg = window.Telegram?.WebApp;
@@ -16,10 +86,110 @@ if (tg) {
   tg.ready();
   tg.expand();
   tg.disableVerticalSwipes();
-  // Match TG theme
   document.body.style.background = tg.themeParams?.bg_color || '#060614';
-  // Back button closes mini app
   tg.BackButton.onClick(() => tg.close());
+}
+
+// Wallet UI functions (use net.token from game.js)
+function openWallet() {
+  document.getElementById('walletOverlay').classList.add('show');
+  loadBalance();
+  loadDepositAddress();
+}
+function closeWallet() {
+  document.getElementById('walletOverlay').classList.remove('show');
+}
+function switchTab(tab) {
+  document.getElementById('tabDeposit').classList.toggle('active', tab === 'deposit');
+  document.getElementById('tabWithdraw').classList.toggle('active', tab === 'withdraw');
+  document.getElementById('depositPanel').style.display = tab === 'deposit' ? 'block' : 'none';
+  document.getElementById('withdrawPanel').style.display = tab === 'withdraw' ? 'block' : 'none';
+}
+
+async function getApiBase() {
+  // Access net from game.js
+  return (typeof net !== 'undefined' && net.apiBase) ? net.apiBase : '';
+}
+async function getToken() {
+  if (typeof net !== 'undefined' && net.token) return net.token;
+  return null;
+}
+
+async function loadBalance() {
+  const token = await getToken();
+  if (!token) { document.getElementById('walletBalance').textContent = 'Not logged in'; return; }
+  try {
+    const res = await fetch(await getApiBase() + '/api/wallet/balance', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      document.getElementById('walletBalance').textContent = (data.balance_eth || 0).toFixed(4) + ' ETH';
+    }
+  } catch (e) {
+    document.getElementById('walletBalance').textContent = 'Error loading';
+  }
+}
+
+async function loadDepositAddress() {
+  const token = await getToken();
+  if (!token) { document.getElementById('depositAddr').textContent = 'Login first'; return; }
+  try {
+    const res = await fetch(await getApiBase() + '/api/wallet/deposit-address', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      document.getElementById('depositAddr').innerHTML = data.address + '<span class="copy-hint">tap to copy</span>';
+      document.getElementById('depositAddr').dataset.addr = data.address;
+    } else {
+      const err = await res.json();
+      document.getElementById('depositAddr').textContent = err.error || 'Not available';
+    }
+  } catch (e) {
+    document.getElementById('depositAddr').textContent = 'Deposits not configured';
+  }
+}
+
+function copyAddr() {
+  const addr = document.getElementById('depositAddr').dataset.addr;
+  if (!addr) return;
+  navigator.clipboard.writeText(addr).then(() => {
+    const msg = document.getElementById('depositMsg');
+    msg.className = 'wallet-msg ok';
+    msg.textContent = 'Address copied!';
+    setTimeout(() => msg.textContent = '', 2000);
+  });
+}
+
+async function doWithdraw() {
+  const token = await getToken();
+  if (!token) return;
+  const addr = document.getElementById('withdrawAddr').value.trim();
+  const amount = document.getElementById('withdrawAmount').value.trim();
+  const msg = document.getElementById('withdrawMsg');
+
+  if (!addr || !amount) { msg.className = 'wallet-msg err'; msg.textContent = 'Fill in all fields'; return; }
+
+  try {
+    const res = await fetch(await getApiBase() + '/api/wallet/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ to_address: addr, amount_eth: amount }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'wallet-msg ok';
+      msg.textContent = 'Sent! TX: ' + data.tx_hash.slice(0, 18) + '...';
+      loadBalance();
+    } else {
+      msg.className = 'wallet-msg err';
+      msg.textContent = data.error || 'Withdrawal failed';
+    }
+  } catch (e) {
+    msg.className = 'wallet-msg err';
+    msg.textContent = 'Network error';
+  }
 }
 </script>
 <script src="game.js"></script>
