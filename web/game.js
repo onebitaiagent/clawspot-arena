@@ -355,8 +355,13 @@ const game = {
   combatState:null, attackCooldown:[0,0,0,0],
   winner:-1,
   particles:[], ripples:[], floatingTexts:[],
+  marchAnims: [],  // troop march visuals
   time:0, dt:0, lastTime:0,
   fortifySource:null, hint:'',
+  // Screen shake
+  shakeX:0, shakeY:0, shakeIntensity:0, shakeDuration:0,
+  // QTE
+  qte: null, // { active, hit, timer, window, bonus }
 };
 
 // === EFFECTS ===
@@ -367,6 +372,57 @@ function spawnParticles(x,y,color,count){
     x,y,vx:(Math.random()-.5)*200,vy:(Math.random()-.5)*200-50,
     life:.5+Math.random()*.5,color,size:2+Math.random()*4,
   });
+}
+
+function screenShake(intensity, duration) {
+  game.shakeIntensity = intensity * devicePixelRatio;
+  game.shakeDuration = duration || 0.3;
+}
+
+function spawnMarch(fromCell, toCell, color, count) {
+  const from = cellCenter(fromCell), to = cellCenter(toCell);
+  for (let i = 0; i < count; i++) {
+    game.marchAnims.push({
+      x: from.x, y: from.y,
+      tx: to.x + (Math.random() - 0.5) * cellSize * 0.3,
+      ty: to.y + (Math.random() - 0.5) * cellSize * 0.3,
+      color, life: 0.4 + i * 0.08, maxLife: 0.4 + i * 0.08,
+      size: cellSize * 0.12,
+    });
+  }
+}
+
+function startQTE() {
+  game.qte = {
+    active: true, hit: false,
+    timer: 0, window: 0.8, // 0.8s to tap
+    bonus: 0,
+    promptY: 0.5 + Math.random() * 0.15, // vary position slightly
+  };
+}
+
+function hitQTE() {
+  if (!game.qte || !game.qte.active || game.qte.hit) return;
+  const t = game.qte.timer;
+  const sweet = game.qte.window * 0.5; // sweet spot in middle
+  const dist = Math.abs(t - sweet) / sweet;
+  if (dist < 0.4) {
+    // Perfect hit
+    game.qte.hit = true;
+    game.qte.bonus = 1;
+    spawnFloat(W / 2, H * game.qte.promptY - 30, 'PERFECT! +1', '#ffdd00');
+    audio.play('claim_territory');
+  } else if (dist < 0.8) {
+    // Good hit
+    game.qte.hit = true;
+    game.qte.bonus = 1;
+    spawnFloat(W / 2, H * game.qte.promptY - 30, 'GOOD! +1', '#00ff88');
+    audio.play('shell_earn');
+  } else {
+    game.qte.hit = true;
+    game.qte.bonus = 0;
+    spawnFloat(W / 2, H * game.qte.promptY - 30, 'MISS!', '#ff4444');
+  }
 }
 
 // === INIT ===
@@ -476,23 +532,45 @@ function applyCombatResult(a, d, r) {
 function startPlayerCombat(atk, def) {
   const r = resolveCombat(atk, def); if (!r) return;
   game.phase = 'combat';
-  game.combatState = { attacker: atk, defender: def, result: r, timer: 0, duration: 1.8, resolved: false };
+  game.combatState = { attacker: atk, defender: def, result: r, timer: 0, duration: 2.2, resolved: false };
   audio.play('combat_start');
+  screenShake(4, 0.3);
+  spawnMarch(atk, def, PLAYER_COLORS[atk.owner], Math.min(r.atkCount, 3));
+  // Start QTE after short delay
+  startQTE();
 }
 
 // AI attack: resolves instantly with floating text, no blocking
 function startAICombat(atk, def) {
+  const wasPlayerCell = def.owner === mySlot();
   const r = resolveCombat(atk, def); if (!r) return;
   applyCombatResult(atk, def, r);
-  // Show brief visual on the grid
   const dp = cellCenter(def);
   spawnParticles(dp.x, dp.y, PLAYER_COLORS[atk.owner], 6);
+  spawnMarch(atk, def, PLAYER_COLORS[atk.owner], 2);
+  // Shake if player lost territory
+  if (wasPlayerCell && def.owner !== mySlot()) screenShake(6, 0.3);
 }
 
 function finishCombat() {
   const cs = game.combatState; if (!cs || cs.resolved) return;
   cs.resolved = true;
+
+  // Apply QTE bonus to attacker's highest roll
+  if (game.qte && game.qte.bonus > 0 && cs.result.atkRolls.length > 0) {
+    cs.result.atkRolls[0] = Math.min(6, cs.result.atkRolls[0] + game.qte.bonus);
+    // Recalculate result with bonus
+    let al = 0, dl = 0;
+    for (let i = 0; i < Math.min(cs.result.atkRolls.length, cs.result.defRolls.length); i++) {
+      if (cs.result.atkRolls[i] > cs.result.defRolls[i]) dl++; else al++;
+    }
+    cs.result.atkLoss = al;
+    cs.result.defLoss = dl;
+  }
+  game.qte = null;
+
   applyCombatResult(cs.attacker, cs.defender, cs.result);
+  screenShake(cs.result.captured ? 8 : 5, 0.4);
 }
 
 // === ECONOMY ===
@@ -522,25 +600,82 @@ function aiDeployReinforcements(p){
   while(n>0&&tgts.length){tgts[Math.floor(Math.random()*tgts.length)].troops++;n--;}
   game.reinforcements[p]=0;
 }
+// AI personalities: 1=aggressive(Red), 2=defensive(Blue), 3=expansionist(Gold)
+const AI_STYLE = { 1: 'aggressive', 2: 'defensive', 3: 'expansionist' };
+
 function aiTurn(p){
   if(game.phase==='combat'||game.phase==='gameover')return;
   if(game.attackCooldown[p]===-1||game.attackCooldown[p]>0||countTerritories(p)===0)return;
-  while(game.shells[p]>=10&&game.reinforcements[p]<5){game.shells[p]-=10;game.reinforcements[p]++;}
+  const style = AI_STYLE[p] || 'aggressive';
+
+  // Buy troops — aggressive buys more, defensive saves
+  const buyLimit = style === 'aggressive' ? 8 : style === 'defensive' ? 3 : 5;
+  while(game.shells[p]>=10&&game.reinforcements[p]<buyLimit){game.shells[p]-=10;game.reinforcements[p]++;}
   if(game.reinforcements[p]>0)aiDeployReinforcements(p);
+
+  // Find best attack based on personality
   let bs=-1,ba=null,bd=null;
   for(const c of cells){
     if(c.owner!==p||c.troops<2)continue;
     for(const nb of getNeighbors(c.row,c.col)){
       if(nb.owner===p)continue;
       let s=(c.troops-nb.troops)*2;
-      if(nb.owner===-1)s+=3;if(nb.terrain==='crown')s+=5;if(nb.troops===0)s+=5;
-      if(nb.region){let ow=0,tot=0;for(const x of cells)if(x.region===nb.region){tot++;if(x.owner===p)ow++;}
-        if(ow>=tot-2)s+=8;}
+
+      // Base scoring
+      if(nb.owner===-1)s+=3;
+      if(nb.troops===0)s+=5;
+      if(nb.terrain==='crown')s+=5;
+
+      // Region completion
+      if(nb.region){
+        let ow=0,tot=0;
+        for(const x of cells)if(x.region===nb.region){tot++;if(x.owner===p)ow++;}
+        if(ow>=tot-2)s+=8;
+        if(ow>=tot-1)s+=12; // one away from completing
+      }
+
+      // Personality modifiers
+      if(style==='aggressive'){
+        // Target the player with most territory
+        if(nb.owner>=0&&nb.owner!==p){
+          const enemySize=countTerritories(nb.owner);
+          if(enemySize>15)s+=6; // hunt the leader
+        }
+        s+=2; // more willing to attack in general
+      } else if(style==='defensive'){
+        // Only attack when strong advantage
+        if(c.troops<nb.troops+2)s-=8; // don't attack unless 2+ troop advantage
+        if(nb.owner===-1)s+=4; // prefer unclaimed over risky fights
+      } else if(style==='expansionist'){
+        // Prefer unclaimed, spread wide
+        if(nb.owner===-1)s+=6;
+        if(nb.troops===0)s+=4;
+        // Penalty for attacking strong enemies
+        if(nb.owner>=0&&nb.troops>=3)s-=3;
+      }
+
       s+=Math.random()*3;
       if(s>bs){bs=s;ba=c;bd=nb;}
     }
   }
-  if(ba&&bd&&bs>0){startAICombat(ba,bd);game.attackCooldown[p]=3+Math.random()*2;}
+
+  // Attack threshold varies by personality
+  const threshold = style==='aggressive' ? -2 : style==='defensive' ? 4 : 0;
+  if(ba&&bd&&bs>threshold){
+    // Instant claim for empty cells
+    if(bd.troops<=0&&bd.owner===-1){
+      const mv=Math.min(ba.troops-1,3);
+      ba.troops-=mv;bd.owner=p;bd.troops=mv;
+      const dp=cellCenter(bd);
+      spawnParticles(dp.x,dp.y,PLAYER_COLORS[p],6);
+      game.attackCooldown[p]=1+Math.random();
+    } else {
+      startAICombat(ba,bd);
+      game.attackCooldown[p]= style==='aggressive' ? 2+Math.random()*2 : 3+Math.random()*3;
+    }
+  }
+
+  // Fortify: move interior troops to border
   for(const c of cells){
     if(c.owner!==p||c.troops<=1)continue;
     if(getNeighbors(c.row,c.col).some(n=>n.owner!==p))continue;
@@ -562,7 +697,11 @@ function handleTap(sx,sy){
   spawnRipple(px,py,'#ffffff');
   if(game.phase==='title'){initGame();return;}
   if(game.phase==='gameover'){game.phase='title';return;}
-  if(game.phase==='combat')return;
+  if(game.phase==='combat'){
+    // QTE tap during combat
+    if(game.qte&&game.qte.active&&!game.qte.hit) hitQTE();
+    return;
+  }
   if(handleHUDTap(sx,sy))return;
   const cell=screenToGrid(sx,sy);
   if(!cell)return;
@@ -683,6 +822,34 @@ function updateEffects(dt){
   for(let i=game.floatingTexts.length-1;i>=0;i--){
     const f=game.floatingTexts[i];f.y+=f.vy*dt;f.life-=dt;
     if(f.life<=0)game.floatingTexts.splice(i,1);
+  }
+  // March animations
+  for(let i=game.marchAnims.length-1;i>=0;i--){
+    const m=game.marchAnims[i];
+    m.life-=dt;
+    const progress=1-(m.life/m.maxLife);
+    m.x+=(m.tx-m.x)*dt*6;
+    m.y+=(m.ty-m.y)*dt*6;
+    // Bounce
+    m.y-=Math.sin(progress*Math.PI)*cellSize*0.2*dt*3;
+    if(m.life<=0)game.marchAnims.splice(i,1);
+  }
+  // Screen shake decay
+  if(game.shakeDuration>0){
+    game.shakeDuration-=dt;
+    game.shakeX=(Math.random()-.5)*2*game.shakeIntensity;
+    game.shakeY=(Math.random()-.5)*2*game.shakeIntensity;
+    game.shakeIntensity*=0.9;
+  } else {
+    game.shakeX=0;game.shakeY=0;
+  }
+  // QTE timer
+  if(game.qte&&game.qte.active&&!game.qte.hit){
+    game.qte.timer+=dt;
+    if(game.qte.timer>=game.qte.window){
+      game.qte.active=false;
+      spawnFloat(W/2,H*0.45,'MISSED!','#ff4444');
+    }
   }
   // Bubbles
   for(const b of bubbles){
@@ -1468,7 +1635,61 @@ function drawEffects() {
     ctx.fillStyle = p.color;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
   }
+  // March animations (little crabs walking)
+  for (const m of game.marchAnims) {
+    ctx.globalAlpha = Math.min(1, m.life * 3);
+    drawCrab(m.x, m.y, m.size, m.color, 0, game.time + m.maxLife * 10);
+  }
   ctx.globalAlpha = 1;
+}
+
+function drawQTE() {
+  const q = game.qte;
+  if (!q || !q.active) return;
+  const dpr = devicePixelRatio;
+  const py = H * q.promptY;
+
+  // QTE bar background
+  const barW = W * 0.5;
+  const barH = 36 * dpr;
+  const barX = (W - barW) / 2;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  roundRect(ctx, barX - 10, py - barH, barW + 20, barH * 2, 10);
+  ctx.fill();
+
+  // Progress bar
+  const progress = q.timer / q.window;
+  ctx.fillStyle = '#222';
+  roundRect(ctx, barX, py - 6, barW, 12 * dpr, 4);
+  ctx.fill();
+
+  // Sweet spot zone (green in middle)
+  const sweetStart = barW * 0.3;
+  const sweetEnd = barW * 0.7;
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(barX + sweetStart, py - 6, sweetEnd - sweetStart, 12 * dpr);
+
+  // Moving indicator
+  const indX = barX + barW * progress;
+  ctx.fillStyle = progress > 0.3 && progress < 0.7 ? '#00ff88' : '#ff4444';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.arc(indX, py, 8 * dpr, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.max(14 * dpr, 15)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('\u2694 TAP NOW!', W / 2, py - barH * 0.5);
+
+  // Subtext
+  ctx.fillStyle = '#888';
+  ctx.font = `${Math.max(10 * dpr, 11)}px monospace`;
+  ctx.fillText('Claw Strike: +1 to dice', W / 2, py + barH * 0.7);
 }
 
 // === MOCK TICKER DATA (scrolls during gameplay) ===
@@ -1609,35 +1830,83 @@ function drawTitle() {
 }
 
 function drawGameOver() {
-  ctx.globalAlpha = 0.75; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+  ctx.globalAlpha = 0.8; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
   const dpr = devicePixelRatio;
-  const big = Math.max(30 * dpr, 32);
+  const big = Math.max(32 * dpr, 34);
   const med = Math.max(18 * dpr, 20);
+  const sf = Math.max(12 * dpr, 13);
+  const me = mySlot();
   ctx.textAlign = 'center';
 
-  if (game.winner === 0) {
-    ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 20;
-    ctx.fillStyle = '#ffdd00'; ctx.font = `bold ${big}px monospace`;
-    ctx.fillText('VICTORY!', W / 2, H * 0.3);
-    ctx.shadowBlur = 0;
-    drawCrab(W / 2, H * 0.42, Math.min(W, H) * 0.07, '#00ff88', 0, game.time);
-    ctx.fillStyle = '#00ff88'; ctx.font = `${med}px monospace`;
-    ctx.fillText('You conquered the grid!', W / 2, H * 0.52);
-  } else {
-    ctx.fillStyle = '#ff4444'; ctx.font = `bold ${big}px monospace`;
-    ctx.fillText('DEFEAT', W / 2, H * 0.3);
-    drawCrab(W / 2, H * 0.42, Math.min(W, H) * 0.07, PLAYER_COLORS[game.winner], 0, game.time);
-    ctx.fillStyle = PLAYER_COLORS[game.winner]; ctx.font = `${med}px monospace`;
-    ctx.fillText(PLAYER_NAMES[game.winner] + ' dominates!', W / 2, H * 0.52);
+  // Celebration particles (spawn continuously on victory)
+  if (game.winner === me && Math.random() < 0.3) {
+    const px = W * 0.2 + Math.random() * W * 0.6;
+    spawnParticles(px, H * 0.15, ['#ffdd00','#00ff88','#ff4444','#4488ff','#ffaa00'][Math.floor(Math.random()*5)], 3);
   }
 
-  ctx.fillStyle = '#888'; ctx.font = `${Math.max(12 * dpr, 13)}px monospace`;
-  ctx.fillText('Spots: ' + countTerritories(mySlot()) + '  Shells: ' + game.shells[mySlot()], W / 2, H * 0.6);
+  if (game.winner === me) {
+    ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 25;
+    ctx.fillStyle = '#ffdd00'; ctx.font = `bold ${big}px monospace`;
+    ctx.fillText('VICTORY!', W / 2, H * 0.22);
+    ctx.shadowBlur = 0;
+
+    // Three celebrating crabs
+    const crabSize = Math.min(W, H) * 0.06;
+    drawCrab(W / 2 - crabSize * 3, H * 0.34, crabSize, '#00ff88', 0, game.time);
+    drawCrab(W / 2, H * 0.32, crabSize * 1.3, '#00ff88', 0, game.time + 1);
+    drawCrab(W / 2 + crabSize * 3, H * 0.34, crabSize, '#00ff88', 0, game.time + 2);
+
+    ctx.fillStyle = '#00ff88'; ctx.font = `bold ${med}px monospace`;
+    ctx.fillText('You conquered the grid!', W / 2, H * 0.44);
+  } else {
+    ctx.fillStyle = '#ff4444'; ctx.font = `bold ${big}px monospace`;
+    ctx.fillText('DEFEAT', W / 2, H * 0.22);
+    drawCrab(W / 2, H * 0.34, Math.min(W, H) * 0.07, PLAYER_COLORS[game.winner], 0, game.time);
+    ctx.fillStyle = PLAYER_COLORS[game.winner]; ctx.font = `${med}px monospace`;
+    ctx.fillText(PLAYER_NAMES[game.winner] + ' dominates!', W / 2, H * 0.44);
+  }
+
+  // Stats panel
+  const panelW = Math.min(W * 0.8, 350 * dpr);
+  const panelH = 100 * dpr;
+  const panelX = (W - panelW) / 2;
+  const panelY = H * 0.5;
+  ctx.fillStyle = 'rgba(12,12,32,0.8)';
+  roundRect(ctx, panelX, panelY, panelW, panelH, 10); ctx.fill();
+  ctx.strokeStyle = '#2a2a4a'; ctx.lineWidth = 1;
+  roundRect(ctx, panelX, panelY, panelW, panelH, 10); ctx.stroke();
+
+  // Stats grid
+  const stats = [
+    ['Spots', '' + countTerritories(me), PLAYER_COLORS[me]],
+    ['Shells', '' + game.shells[me], '#ffcc00'],
+    ['Regions', '' + getRegionControl(me).length, '#ffdd00'],
+  ];
+  stats.forEach(([label, val, col], i) => {
+    const sx = panelX + (i + 0.5) * (panelW / 3);
+    ctx.fillStyle = col; ctx.font = `bold ${Math.max(18 * dpr, 20)}px monospace`;
+    ctx.fillText(val, sx, panelY + panelH * 0.4);
+    ctx.fillStyle = '#666'; ctx.font = `${sf}px monospace`;
+    ctx.fillText(label, sx, panelY + panelH * 0.7);
+  });
+
+  // Scoreboard
+  const sbY = panelY + panelH + 15 * dpr;
+  ctx.font = `${sf}px monospace`;
+  for (let p = 0; p < 4; p++) {
+    const tc = countTerritories(p);
+    ctx.fillStyle = tc > 0 ? PLAYER_COLORS[p] : '#444';
+    ctx.textAlign = 'left';
+    ctx.fillText((p === game.winner ? '\u2655 ' : '  ') + PLAYER_NAMES[p], panelX + 10, sbY + p * 16 * dpr);
+    ctx.textAlign = 'right';
+    ctx.fillText(tc + ' spots', panelX + panelW - 10, sbY + p * 16 * dpr);
+  }
 
   const pulse = 0.3 + Math.sin(game.time * 3) * 0.6;
   ctx.globalAlpha = Math.max(0, pulse);
   ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(16 * dpr, 17)}px monospace`;
-  ctx.fillText('TAP TO CONTINUE', W / 2, H * 0.72);
+  ctx.textAlign = 'center';
+  ctx.fillText('TAP TO CONTINUE', W / 2, H * 0.88);
   ctx.globalAlpha = 1;
 }
 
@@ -1693,13 +1962,23 @@ function gameLoop(ts) {
     drawTitle();
     drawEffects();
   } else {
+    // Apply screen shake
+    ctx.save();
+    if (game.shakeX || game.shakeY) ctx.translate(game.shakeX, game.shakeY);
+
     drawOceanBG();
     drawGrid();
     drawDeployHighlights();
     drawTroops();
     drawSelection();
     drawEffects();
-    if (game.combatState) drawCombat();
+    if (game.combatState) {
+      drawCombat();
+      drawQTE();
+    }
+
+    ctx.restore(); // end shake transform
+
     drawHUD();
     drawTicker();
     drawHintBar();

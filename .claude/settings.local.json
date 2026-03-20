@@ -32,7 +32,8 @@
       "Bash(curl -s https://romantic-curiosity-production-f21e.up.railway.app/api/health)",
       "Bash(railway logs:*)",
       "Bash(railway service:*)",
-      "Bash(railway status:*)"
+      "Bash(railway status:*)",
+      "Bash(bash server/setup-bot.sh \"8797835013:AAGbBoaq_ReAiqhs7kLXifllZS4IyOj8iHg\" \"https://romantic-curiosity-production-f21e.up.railway.app\")"
     ]
   }
 }
