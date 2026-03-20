@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ClawSpot Arena — Territory Warfare with Crabs</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+@font-face { font-family:'Mono'; src:local('SF Mono'),local('Menlo'),local('Consolas'); }
+:root {
+  --bg: #060614; --card: #0c0c20; --border: #1a1a30;
+  --green: #00ff88; --gold: #ffcc00; --red: #ff4444;
+  --blue: #4488ff; --orange: #ffaa00; --cyan: #44ddff;
+  --text: #ccc; --dim: #666; --faint: #333;
+}
+html { background:var(--bg); color:var(--text); font-family:'Courier New',monospace; scroll-behavior:smooth; }
+body { min-height:100vh; overflow-x:hidden; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--faint); border-radius:3px; }
+
+/* Ticker */
+.ticker { background:#08081a; border-bottom:1px solid var(--border); padding:6px 0; overflow:hidden; white-space:nowrap; position:sticky; top:0; z-index:100; }
+.ticker-inner { display:inline-block; animation:scroll 60s linear infinite; }
+.ticker-item { display:inline-block; margin-right:32px; font-size:12px; }
+.ticker-name { color:var(--text); }
+.ticker-action { margin:0 4px; }
+.ticker-eth { color:var(--gold); font-weight:bold; }
+.ticker-time { color:var(--dim); font-size:11px; }
+.ticker-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+@keyframes scroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+/* Nav */
+.nav { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:rgba(6,6,20,.9); position:sticky; top:33px; z-index:99; backdrop-filter:blur(10px); }
+.nav-logo { font-size:18px; font-weight:bold; }
+.nav-logo span:first-child { color:var(--gold); }
+.nav-logo span:last-child { color:var(--green); }
+.nav-right { display:flex; align-items:center; gap:12px; }
+.nav-balance { text-align:right; font-size:12px; }
+.nav-balance .amount { color:#fff; font-weight:bold; font-size:15px; }
+.nav-balance .chain { color:var(--green); font-size:10px; }
+.btn { display:inline-block; padding:8px 16px; border-radius:8px; font-family:inherit; font-size:13px; font-weight:bold; cursor:pointer; border:1px solid; text-decoration:none; transition:all .15s; }
+.btn-green { background:#0d2d14; border-color:var(--green); color:var(--green); }
+.btn-green:hover { background:#1a4a24; }
+.btn-red { background:#2a1212; border-color:var(--red); color:var(--red); }
+.btn-red:hover { background:#3a1a1a; }
+.btn-play { background:linear-gradient(135deg,#0d3d1d,#1a5a2a); border-color:var(--green); color:var(--green); font-size:18px; padding:16px 40px; border-radius:12px; box-shadow:0 0 30px rgba(0,255,136,.15); }
+.btn-play:hover { box-shadow:0 0 40px rgba(0,255,136,.3); background:linear-gradient(135deg,#1a5a2a,#2a7a3a); }
+.btn-sm { padding:5px 10px; font-size:11px; }
+
+/* Hero */
+.hero { text-align:center; padding:60px 20px 40px; position:relative; overflow:hidden; }
+.hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% 0%, rgba(0,255,136,.06) 0%, transparent 70%); pointer-events:none; }
+.hero h1 { font-size:clamp(36px,8vw,64px); line-height:1.1; }
+.hero h1 .gold { color:var(--gold); text-shadow:0 0 20px rgba(255,204,0,.3); }
+.hero h1 .green { color:var(--green); text-shadow:0 0 20px rgba(0,255,136,.3); }
+.hero .sub { color:var(--dim); font-size:14px; margin:12px 0 28px; }
+.hero .sub b { color:var(--text); }
+.hero-stats { display:flex; gap:24px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
+.hero-stat { text-align:center; }
+.hero-stat .val { font-size:22px; font-weight:bold; color:#fff; }
+.hero-stat .label { font-size:11px; color:var(--dim); margin-top:2px; }
+
+/* Sections */
+.section { padding:32px 20px; max-width:900px; margin:0 auto; }
+.section-title { font-size:14px; color:var(--dim); text-transform:uppercase; letter-spacing:2px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+.section-title .dot { width:8px; height:8px; border-radius:50%; }
+
+/* Arenas */
+.arenas { display:grid; gap:10px; }
+.arena-card { display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; transition:border-color .15s; cursor:pointer; position:relative; overflow:hidden; }
+.arena-card:hover { border-color:#2a2a50; }
+.arena-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:10px 0 0 10px; }
+.arena-card.free::before { background:var(--dim); }
+.arena-card.bronze::before { background:#cc8844; }
+.arena-card.silver::before { background:#aab; }
+.arena-card.gold::before { background:var(--gold); }
+.arena-card.diamond::before { background:var(--cyan); }
+.arena-left { display:flex; flex-direction:column; gap:3px; padding-left:10px; }
+.arena-name { font-weight:bold; font-size:15px; }
+.arena-card.free .arena-name { color:var(--dim); }
+.arena-card.bronze .arena-name { color:#cc8844; }
+.arena-card.silver .arena-name { color:#aab; }
+.arena-card.gold .arena-name { color:var(--gold); }
+.arena-card.diamond .arena-name { color:var(--cyan); }
+.arena-entry { font-size:12px; color:var(--dim); }
+.arena-entry b { color:var(--text); }
+.arena-right { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.arena-pot { font-size:16px; font-weight:bold; color:var(--gold); }
+.arena-players { font-size:11px; color:var(--dim); }
+.arena-players.full { color:var(--red); }
+.arena-join { font-size:11px; padding:4px 12px; border-radius:6px; border:1px solid var(--green); color:var(--green); background:#0d2d14; cursor:pointer; font-family:inherit; font-weight:bold; margin-top:2px; }
+
+/* Two columns */
+.cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:900px; margin:0 auto; padding:0 20px 32px; }
+@media (max-width:640px) { .cols { grid-template-columns:1fr; } }
+
+/* Leaderboard */
+.lb-table { width:100%; border-collapse:collapse; }
+.lb-table th { text-align:left; font-size:11px; color:var(--dim); padding:6px 8px; border-bottom:1px solid var(--border); }
+.lb-table th:last-child { text-align:right; }
+.lb-table td { padding:8px; font-size:13px; border-bottom:1px solid #0f0f20; }
+.lb-table td:last-child { text-align:right; color:var(--gold); font-weight:bold; }
+.lb-rank { font-weight:bold; width:28px; }
+.lb-rank.gold { color:var(--gold); }
+.lb-rank.silver { color:#aab; }
+.lb-rank.bronze { color:#cc8844; }
+.lb-name { color:#eee; }
+.lb-wins { color:var(--dim); font-size:12px; }
+.lb-streak { color:var(--green); font-size:11px; }
+.lb-row-1 { background:rgba(255,204,0,.04); }
+
+/* Feed */
+.feed { display:flex; flex-direction:column; gap:2px; max-height:340px; overflow-y:auto; }
+.feed-item { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-radius:6px; background:rgba(12,12,32,.5); }
+.feed-left { display:flex; flex-direction:column; gap:2px; }
+.feed-name { font-size:13px; font-weight:bold; color:#ddd; }
+.feed-action { font-size:11px; }
+.feed-action.won { color:var(--green); }
+.feed-action.dominated { color:var(--gold); }
+.feed-action.eliminated { color:var(--red); }
+.feed-action.claimed { color:var(--blue); }
+.feed-right { text-align:right; }
+.feed-eth { font-size:13px; font-weight:bold; color:var(--gold); }
+.feed-time { font-size:10px; color:var(--dim); }
+.feed-live { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--red); animation:blink 1s infinite; margin-right:6px; vertical-align:middle; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* How it works */
+.steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; }
+.step { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px 16px; text-align:center; }
+.step-num { font-size:28px; font-weight:bold; color:var(--green); opacity:.5; }
+.step-title { font-size:14px; font-weight:bold; color:#fff; margin:8px 0 4px; }
+.step-desc { font-size:12px; color:var(--dim); line-height:1.4; }
+
+/* Footer */
+.footer { text-align:center; padding:40px 20px; border-top:1px solid var(--border); margin-top:20px; }
+.footer a { color:var(--green); text-decoration:none; }
+.footer p { font-size:12px; color:var(--dim); margin-top:8px; }
+
+/* Crab ASCII */
+.crab { font-size:40px; line-height:1; margin-bottom:8px; display:inline-block; animation:bob 2s ease-in-out infinite; }
+@keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+</style>
+</head>
+<body>
+
+<!-- Live Ticker -->
+<div class="ticker">
+<div class="ticker-inner" id="ticker"></div>
+</div>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-logo"><span>CLAWSPOT </span><span>ARENA</span></div>
+  <div class="nav-right">
+    <div class="nav-balance">
+      <div class="amount">0.247 ETH</div>
+      <div class="chain">Base L2</div>
+    </div>
+    <a class="btn btn-green btn-sm" href="#">Deposit</a>
+    <a class="btn btn-red btn-sm" href="#">Withdraw</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="crab">🦀</div>
+  <h1><span class="gold">CLAWSPOT</span><br><span class="green">ARENA</span></h1>
+  <p class="sub">RISK meets crypto. <b>Deploy crabs. Conquer territory. Win ETH.</b></p>
+  <a class="btn btn-play" href="play.html">⚔ PLAY NOW</a>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="val">142</div><div class="label">ONLINE NOW</div></div>
+    <div class="hero-stat"><div class="val" style="color:var(--gold)">12.4 ETH</div><div class="label">WON TODAY</div></div>
+    <div class="hero-stat"><div class="val">2,847</div><div class="label">GAMES PLAYED</div></div>
+    <div class="hero-stat"><div class="val" style="color:var(--green)">0.72 ETH</div><div class="label">BIGGEST WIN</div></div>
+  </div>
+</section>
+
+<!-- Staked Arenas -->
+<section class="section">
+  <div class="section-title"><span class="dot" style="background:var(--green)"></span> STAKED ARENAS</div>
+  <div class="arenas">
+    <div class="arena-card free" onclick="location='play.html'">
+      <div class="arena-left">
+        <div class="arena-name">Free Play</div>
+        <div class="arena-entry">No entry fee — <b>practice mode</b></div>
+      </div>
+      <div class="arena-right">
+        <button class="arena-join">PLAY</button>
+        <div class="arena-players">3/4 players</div>
+      </div>
+    </div>
+    <div class="arena-card bronze">
+      <div class="arena-left">
+        <div class="arena-name">Bronze Arena</div>
+        <div class="arena-entry">Entry: <b>0.005 ETH</b></div>
+      </div>
+      <div class="arena-right">
+        <div class="arena-pot">0.018 ETH</div>
+        <div class="arena-players">2/4 players</div>
+        <button class="arena-join">JOIN</button>
+      </div>
+    </div>
+    <div class="arena-card silver">
+      <div class="arena-left">
+        <div class="arena-name">Silver Arena</div>
+        <div class="arena-entry">Entry: <b>0.02 ETH</b></div>
+      </div>
+      <div class="arena-right">
+        <div class="arena-pot">0.072 ETH</div>
+        <div class="arena-players full">4/4 FULL</div>
+      </div>
+    </div>
+    <div class="arena-card gold">
+      <div class="arena-left">
+        <div class="arena-name">Gold Arena</div>
+        <div class="arena-entry">Entry: <b>0.05 ETH</b></div>
+      </div>
+      <div class="arena-right">
+        <div class="arena-pot">0.180 ETH</div>
+        <div class="arena-players">1/4 players</div>
+        <button class="arena-join">JOIN</button>
+      </div>
+    </div>
+    <div class="arena-card diamond">
+      <div class="arena-left">
+        <div class="arena-name">Diamond Arena</div>
+        <div class="arena-entry">Entry: <b>0.2 ETH</b></div>
+      </div>
+      <div class="arena-right">
+        <div class="arena-pot">0.720 ETH</div>
+        <div class="arena-players">3/4 players</div>
+        <button class="arena-join">JOIN</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Leaderboard + Live Feed -->
+<div class="cols">
+  <section>
+    <div class="section-title"><span class="dot" style="background:var(--gold)"></span> TOP PAYOUTS</div>
+    <table class="lb-table" id="leaderboard"></table>
+  </section>
+  <section>
+    <div class="section-title"><span class="feed-live"></span> LIVE ACTIVITY</div>
+    <div class="feed" id="feed"></div>
+  </section>
+</div>
+
+<!-- How It Works -->
+<section class="section">
+  <div class="section-title"><span class="dot" style="background:var(--blue)"></span> HOW IT WORKS</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-title">Deposit ETH</div>
+      <div class="step-desc">Send ETH to your unique deposit address. No wallet connect needed — works from any wallet.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-title">Join an Arena</div>
+      <div class="step-desc">Pick a stake level. 4 players per arena. Entry fees go into the prize pool.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-title">Conquer the Grid</div>
+      <div class="step-desc">Deploy crab troops, attack enemies, capture 60 of 100 spots to dominate and win.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-title">Collect Winnings</div>
+      <div class="step-desc">Winner takes 90% of the pot. Withdraw ETH to any address instantly on Base L2.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>🦀 <a href="play.html">Play ClawSpot Arena</a> — RISK meets ClawSpot.fun</p>
+  <p>Built on Base L2 • No wallet connect required • Telegram Mini App</p>
+</footer>
+
+<script>
+// Generate mock data
+const names=['CrabKing','TidalWave','ReefLord','ShellHunter','DeepDiver','CoralQueen',
+  'ClawMaster','AbyssCrab','TrenchRat','GoldPincer','NeonClaw','PixelCrab','SeaWolf','OceanAce',
+  'SandCrab42','WaveBoss','KelpDuke','CrownCrab','ShoreKing','BasedCrab'];
+const actions=['won','won','dominated','claimed','eliminated','won'];
+const arenas=['Bronze','Silver','Gold','Diamond'];
+
+// Ticker
+const tickerEl=document.getElementById('ticker');
+let tickerHTML='';
+for(let i=0;i<20;i++){
+  const n=names[Math.floor(Math.random()*names.length)];
+  const a=actions[Math.floor(Math.random()*actions.length)];
+  const eth=(a==='dominated'?(0.1+Math.random()*.9):(0.005+Math.random()*.3)).toFixed(3);
+  const ar=arenas[Math.floor(Math.random()*arenas.length)];
+  const mins=Math.floor(Math.random()*60);
+  const col=a==='won'?'var(--green)':a==='dominated'?'var(--gold)':a==='eliminated'?'var(--red)':'var(--blue)';
+  const icon=a==='won'?'⚔':a==='dominated'?'♛':a==='eliminated'?'☠':'⚑';
+  tickerHTML+=`<span class="ticker-item"><span class="ticker-dot" style="background:${col}"></span><span class="ticker-name">${n}</span> <span class="ticker-action" style="color:${col}">${icon} ${a}</span> <span class="ticker-eth">+${eth} ETH</span> <span class="ticker-time">${mins}m ago</span></span>`;
+}
+tickerEl.innerHTML=tickerHTML+tickerHTML; // double for seamless loop
+
+// Leaderboard
+const lb=document.getElementById('leaderboard');
+const topPlayers=names.sort(()=>Math.random()-.5).slice(0,8).map((n,i)=>({
+  name:n, wins:Math.floor(5+Math.random()*50),
+  eth:(0.5+Math.random()*5).toFixed(3), streak:Math.floor(1+Math.random()*8),
+})).sort((a,b)=>b.eth-a.eth);
+
+let lbHTML='<thead><tr><th>#</th><th>Player</th><th>Wins</th><th>ETH Won</th></tr></thead><tbody>';
+topPlayers.forEach((p,i)=>{
+  const rc=i===0?'gold':i===1?'silver':i===2?'bronze':'';
+  lbHTML+=`<tr class="${i===0?'lb-row-1':''}"><td class="lb-rank ${rc}">${i+1}</td><td class="lb-name">${p.name} <span class="lb-streak">🔥${p.streak}</span></td><td class="lb-wins">${p.wins}W</td><td>${p.eth}</td></tr>`;
+});
+lb.innerHTML=lbHTML+'</tbody>';
+
+// Feed
+const feedEl=document.getElementById('feed');
+for(let i=0;i<15;i++){
+  const n=names[Math.floor(Math.random()*names.length)];
+  const a=actions[Math.floor(Math.random()*actions.length)];
+  const eth=(a==='dominated'?(0.1+Math.random()*.9):(0.005+Math.random()*.3)).toFixed(3);
+  const mins=Math.floor(Math.random()*120);
+  const icon=a==='won'?'⚔':a==='dominated'?'♛':a==='eliminated'?'☠':'⚑';
+  const timeStr=mins<1?'just now':mins+'m ago';
+  feedEl.innerHTML+=`<div class="feed-item"><div class="feed-left"><div class="feed-name">${n}</div><div class="feed-action ${a}">${icon} ${a}</div></div><div class="feed-right"><div class="feed-eth">+${eth} ETH</div><div class="feed-time">${timeStr}</div></div></div>`;
+}
+</script>
+</body>
+</html>

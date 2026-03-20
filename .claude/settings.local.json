@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c game.js)",
+      "Bash(taskkill //PID 734172 //F)",
+      "Bash(taskkill //PID 732404 //F)",
+      "Bash(taskkill //PID 728724 //F)",
+      "Bash(python -m http.server 8080)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 5 npx tsx server/src/index.ts)",
+      "Bash(node -c web/game.js)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://localhost:3847/api/health)",
+      "Bash(curl -s http://localhost:3847/api/auth/guest -X POST -H 'Content-Type: application/json')",
+      "Bash(TOKEN=\"7a0198bd6841f1dbc76ca6582d1a19cb653a0b4b9bae54d0bc2dfd4c1f78d2b2\")",
+      "Bash(curl -s http://localhost:3847/api/game/join -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d '{\"\"tier\"\":\"\"free\"\"}')",
+      "Bash(curl -s \"http://localhost:3847/api/game/0d599526-d518-43fa-af81-f1f9e3b4e4f6\")",
+      "Bash(curl -s http://localhost:3847/)",
+      "Bash(curl -s http://localhost:3847/play.html)",
+      "Bash(npx tsx:*)",
+      "Bash(taskkill //PID 761684 //F)",
+      "Bash(npm run:*)",
+      "Bash(taskkill //PID 764660 //F)",
+      "Bash(timeout 5 node server/dist/index.js)",
+      "Bash(railway version:*)",
+      "Bash(railway whoami:*)",
+      "Bash(railway --help)"
+    ]
+  }
+}
