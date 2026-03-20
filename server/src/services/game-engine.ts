@@ -174,8 +174,18 @@ export function resolveCombat(state: GameState, atkIdx: number, defIdx: number):
   if (atk.troops < 2) return null;
 
   const atkCount = Math.min(atk.troops - 1, 3);
-  const defCount = Math.min(def.troops, 2);
   if (atkCount <= 0) return null;
+
+  // Empty unoccupied cell — instant claim, no dice
+  if (def.troops <= 0 && def.owner === -1) {
+    const moveTroops = Math.min(atk.troops - 1, atkCount);
+    def.owner = atk.owner;
+    def.troops = moveTroops;
+    atk.troops -= moveTroops;
+    return { atkRolls: [], defRolls: [], atkLoss: 0, defLoss: 0, captured: true, troopsMoved: moveTroops };
+  }
+
+  const defCount = Math.min(def.troops, 2);
 
   const atkRolls: number[] = [];
   const defRolls: number[] = [];

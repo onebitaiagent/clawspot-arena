@@ -409,9 +409,11 @@ function initOfflineGame() {
   const starts=[[[8,0],[8,1],[9,0],[9,1]],[[0,0],[0,1],[1,0],[1,1]],[[0,8],[0,9],[1,8],[1,9]],[[8,8],[8,9],[9,8],[9,9]]];
   for(let p=0;p<4;p++){
     for(const[r,c]of starts[p]){const cell=cellAt(r,c);cell.owner=p;cell.troops=3;}
-    game.shells[p]=50;game.reinforcements[p]=5;game.attackCooldown[p]=0;
+    game.shells[p]=50;game.reinforcements[p]=2;game.attackCooldown[p]=0;
   }
-  for(const c of cells)if(c.owner===-1&&Math.random()<.3)c.troops=Math.floor(Math.random()*2)+1;
+  // Auto-deploy 3 troops to borders for AI so they start ready
+  for(let p=1;p<4;p++) aiDeployReinforcements(p);
+  for(const c of cells)if(c.owner===-1&&Math.random()<.2)c.troops=Math.floor(Math.random()*2)+1;
   game.phase='deploy';
   game.reinforceTimer=30;game.shellTimer=10;
 }
@@ -608,6 +610,24 @@ function handleTap(sx,sy){
   if(cell.owner!==s&&isAdjacent(game.selectedCell,cell)){
     if(game.selectedCell.troops<2){spawnFloat(pos.x,pos.y-10,'Need 2+ troops','#ff6666');return;}
     if(game.attackCooldown[s]>0){spawnFloat(pos.x,pos.y-10,'Wait '+Math.ceil(game.attackCooldown[s])+'s','#ff6666');return;}
+    // Empty/unoccupied cell — just claim it, no combat
+    if(cell.troops<=0 && cell.owner===-1){
+      const moveTroops=Math.min(game.selectedCell.troops-1, 3);
+      if(net.online){
+        const fromIdx=game.selectedCell.row*10+game.selectedCell.col;
+        const toIdx=cell.row*10+cell.col;
+        net.send({type:'attack',fromIdx,toIdx});
+      } else {
+        game.selectedCell.troops-=moveTroops;
+        cell.owner=s; cell.troops=moveTroops;
+      }
+      audio.play('claim_territory');
+      spawnParticles(pos.x,pos.y,PLAYER_COLORS[s],10);
+      spawnFloat(pos.x,pos.y-20,'Claimed!','#00ff88');
+      game.attackCooldown[s]=0.5;game.selectedCell=null;
+      return;
+    }
+    // Real combat against occupied cell
     if(net.online){
       const fromIdx=game.selectedCell.row*10+game.selectedCell.col;
       const toIdx=cell.row*10+cell.col;
