@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ClawSpot Arena — Territory Warfare with Crabs</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+// If opened inside Telegram, skip landing page and go straight to game
+if (window.Telegram?.WebApp?.initData) {
+  window.location.replace('play.html');
+}
+</script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 @font-face { font-family:'Mono'; src:local('SF Mono'),local('Menlo'),local('Consolas'); }

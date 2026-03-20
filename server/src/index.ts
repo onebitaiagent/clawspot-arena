@@ -7,6 +7,7 @@ import { authRouter } from './routes/auth';
 import { gameRouter } from './routes/game';
 import { walletRouter } from './routes/wallet';
 import { leaderboardRouter } from './routes/leaderboard';
+import { botRouter } from './routes/bot';
 import { initSupabase } from './services/db';
 
 const app = express();
@@ -21,6 +22,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/game', gameRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/leaderboard', leaderboardRouter);
+app.use('/api/bot', botRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

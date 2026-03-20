@@ -5,9 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ClawSpot Arena — Play</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 <canvas id="game"></canvas>
+<script>
+// Telegram Mini App initialization
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.disableVerticalSwipes();
+  // Match TG theme
+  document.body.style.background = tg.themeParams?.bg_color || '#060614';
+  // Back button closes mini app
+  tg.BackButton.onClick(() => tg.close());
+}
+</script>
 <script src="game.js"></script>
 </body>
 </html>

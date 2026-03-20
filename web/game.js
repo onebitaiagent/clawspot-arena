@@ -1300,32 +1300,43 @@ function drawHUD() {
 
   const me = mySlot();
 
+  // Username + connection status
+  ctx.font = `${sf}px monospace`;
+  ctx.textAlign = 'left';
+  if (net.online) {
+    ctx.fillStyle = '#00ff88';
+    ctx.fillText('\u25CF ' + (net.username || 'Connected'), 10 * dpr, ty + 12 * dpr);
+  } else if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+    ctx.fillStyle = '#888';
+    ctx.fillText(window.Telegram.WebApp.initDataUnsafe.user.first_name, 10 * dpr, ty + 12 * dpr);
+  }
+
   // Shells (with icon)
   ctx.font = `bold ${fs}px monospace`;
   ctx.textAlign = 'left';
   ctx.fillStyle = '#ffcc00';
-  ctx.fillText('\u2728 ' + game.shells[me], 10 * dpr, ty + 22 * dpr);
+  ctx.fillText('\u2728 ' + game.shells[me], 10 * dpr, ty + 26 * dpr);
 
   // Spots
   ctx.fillStyle = PLAYER_COLORS[me];
-  ctx.fillText(countTerritories(me) + ' spots', 10 * dpr, ty + 42 * dpr);
+  ctx.fillText(countTerritories(me) + ' spots', 10 * dpr, ty + 44 * dpr);
 
   // Center info
   ctx.textAlign = 'center';
   if (game.phase === 'deploy' && game.reinforcements[me] > 0) {
     ctx.fillStyle = '#ffcc00';
     ctx.font = `bold ${fs}px monospace`;
-    ctx.fillText('DEPLOY: ' + game.reinforcements[me] + ' troops', W / 2, ty + 22 * dpr);
+    ctx.fillText('DEPLOY: ' + game.reinforcements[me] + ' troops', W / 2, ty + 26 * dpr);
     ctx.fillStyle = '#aaa';
     ctx.font = `${sf}px monospace`;
-    ctx.fillText('Tap your green spots', W / 2, ty + 40 * dpr);
+    ctx.fillText('Tap your green spots', W / 2, ty + 44 * dpr);
   } else {
     ctx.fillStyle = '#777';
     ctx.font = `${sf}px monospace`;
-    ctx.fillText('Troops in ' + Math.ceil(game.reinforceTimer) + 's', W / 2, ty + 22 * dpr);
+    ctx.fillText('Troops in ' + Math.ceil(game.reinforceTimer) + 's', W / 2, ty + 26 * dpr);
     const rc = getRegionControl(me).length;
     ctx.fillStyle = rc > 0 ? '#ffdd00' : '#555';
-    ctx.fillText('Regions: ' + rc + '/8', W / 2, ty + 40 * dpr);
+    ctx.fillText('Regions: ' + rc + '/8', W / 2, ty + 44 * dpr);
   }
 
   // Opponents

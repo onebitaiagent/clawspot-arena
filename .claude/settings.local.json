@@ -25,7 +25,14 @@
       "Bash(timeout 5 node server/dist/index.js)",
       "Bash(railway version:*)",
       "Bash(railway whoami:*)",
-      "Bash(railway --help)"
+      "Bash(railway --help)",
+      "Bash(MSYS_NO_PATHCONV=1 railway up --detach)",
+      "Bash(railway init:*)",
+      "Bash(railway domain:*)",
+      "Bash(curl -s https://romantic-curiosity-production-f21e.up.railway.app/api/health)",
+      "Bash(railway logs:*)",
+      "Bash(railway service:*)",
+      "Bash(railway status:*)"
     ]
   }
 }
