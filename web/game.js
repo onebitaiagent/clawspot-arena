@@ -143,6 +143,21 @@ const net = {
 
   async auth() {
     try {
+      // Try restoring saved token from TG CloudStorage or localStorage
+      const saved = await this.loadSavedToken();
+      if (saved) {
+        const res = await fetch(this.apiBase + '/api/auth/me', {
+          headers: { Authorization: 'Bearer ' + saved },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.token = saved;
+          this.playerId = data.id;
+          this.username = data.username;
+          return true;
+        }
+      }
+
       // Check for Telegram WebApp
       const tg = window.Telegram?.WebApp;
       if (tg && tg.initData) {
@@ -156,6 +171,7 @@ const net = {
           this.token = data.token;
           this.playerId = data.player.id;
           this.username = data.player.username;
+          this.saveToken(data.token);
           return true;
         }
       }
@@ -170,12 +186,44 @@ const net = {
         this.token = data.token;
         this.playerId = data.player.id;
         this.username = data.player.username;
+        this.saveToken(data.token);
         return true;
       }
     } catch (e) {
       console.log('Server not available, playing offline');
     }
     return false;
+  },
+
+  saveToken(token) {
+    try {
+      localStorage.setItem('clawspot_token', token);
+    } catch(e) {}
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.CloudStorage) {
+        tg.CloudStorage.setItem('auth_token', token);
+      }
+    } catch(e) {}
+  },
+
+  async loadSavedToken() {
+    // Try TG CloudStorage first
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.CloudStorage) {
+        return await new Promise((resolve) => {
+          tg.CloudStorage.getItem('auth_token', (err, val) => {
+            resolve(err ? null : val || null);
+          });
+        });
+      }
+    } catch(e) {}
+    // Fallback to localStorage
+    try {
+      return localStorage.getItem('clawspot_token');
+    } catch(e) {}
+    return null;
   },
 
   async joinGame(tier) {
@@ -447,6 +495,22 @@ function hitQTE() {
   }
 }
 
+// Fetch ETH balance periodically
+async function fetchEthBalance() {
+  if (!net.token) return;
+  try {
+    const res = await fetch(net.apiBase + '/api/wallet/balance', {
+      headers: { Authorization: 'Bearer ' + net.token }
+    });
+    if (res.ok) {
+      const d = await res.json();
+      game._ethBalance = (d.balance_eth || 0).toFixed(4);
+    }
+  } catch(e) {}
+}
+// Refresh balance every 30s
+setInterval(() => { if (net.token) fetchEthBalance(); }, 30000);
+
 // === INIT ===
 async function initGame() {
   game.floatingTexts=[];game.ripples=[];game.particles=[];
@@ -461,6 +525,7 @@ async function initGame() {
 
     const authed = await net.auth();
     if (authed) {
+      fetchEthBalance();
       const joined = await net.joinGame('free');
       if (joined) {
         net.connectWS();
@@ -769,6 +834,13 @@ function handleTap(sx,sy){
     const hb=game._helpBtnRect2;
     if(px>=hb.x&&px<=hb.x+hb.w&&py>=hb.y&&py<=hb.y+hb.h){
       if(typeof openHelp==='function') openHelp();return;
+    }
+  }
+  // In-game wallet button
+  if(game._walletBtnRect2){
+    const wb=game._walletBtnRect2;
+    if(px>=wb.x&&px<=wb.x+wb.w&&py>=wb.y&&py<=wb.y+wb.h){
+      if(typeof openWallet==='function') openWallet();return;
     }
   }
   if(handleHUDTap(sx,sy))return;
@@ -1703,6 +1775,30 @@ function drawHUD() {
   ctx.font = `bold ${Math.max(13*dpr,14)}px monospace`;
   ctx.fillText('?', helpX + muteSize/2, muteY + muteSize*0.62);
   game._helpBtnRect2 = { x: helpX, y: muteY, w: muteSize, h: muteSize };
+
+  // Wallet button (next to help)
+  const walX = helpX - muteSize - 6 * dpr;
+  ctx.fillStyle = 'rgba(20,20,40,0.7)';
+  ctx.beginPath(); ctx.arc(walX + muteSize/2, muteY + muteSize/2, muteSize/2, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = `${Math.max(13*dpr,14)}px monospace`;
+  ctx.fillText('\u{1F4B0}', walX + muteSize/2, muteY + muteSize*0.62);
+  game._walletBtnRect2 = { x: walX, y: muteY, w: muteSize, h: muteSize };
+
+  // ETH balance display (below wallet button)
+  if (net.token && game._ethBalance !== undefined) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = `${Math.max(8*dpr,9)}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(game._ethBalance + ' ETH', muteX + muteSize, muteY + muteSize + 14 * dpr);
+  }
+  // Username
+  if (net.username) {
+    ctx.fillStyle = '#00ff88';
+    ctx.font = `${Math.max(8*dpr,9)}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(net.username, muteX + muteSize, muteY + muteSize + 26 * dpr);
+  }
 }
 
 function drawHintBar() {

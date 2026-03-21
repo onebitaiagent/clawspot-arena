@@ -76,6 +76,38 @@ authRouter.post('/guest', async (_req: Request, res: Response) => {
   }
 });
 
+// Sign up with username (non-TG users)
+authRouter.post('/signup', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.body;
+    if (!username || username.length < 2 || username.length > 20) {
+      return res.status(400).json({ error: 'Username must be 2-20 characters' });
+    }
+    // Sanitize: alphanumeric + underscore only
+    const clean = username.replace(/[^a-zA-Z0-9_]/g, '');
+    if (clean.length < 2) return res.status(400).json({ error: 'Invalid characters in username' });
+
+    const player = await createPlayer({ username: clean });
+    const token = crypto.randomBytes(32).toString('hex');
+    sessions.set(token, player.id);
+
+    res.json({
+      token,
+      player: {
+        id: player.id,
+        username: player.username,
+        balance_eth: player.balance_eth,
+        balance_shells: player.balance_shells,
+        wins: player.wins,
+        level: player.level,
+      },
+    });
+  } catch (err) {
+    console.error('Signup error:', err);
+    res.status(500).json({ error: 'Failed to create account' });
+  }
+});
+
 // Get current player info
 authRouter.get('/me', async (req: Request, res: Response) => {
   try {

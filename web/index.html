@@ -188,14 +188,39 @@ body { min-height:100vh; overflow-x:hidden; }
 <nav class="nav">
   <div class="nav-logo"><span>CLAWSPOT </span><span>ARENA</span></div>
   <div class="nav-right">
-    <div class="nav-balance">
-      <div class="amount" id="navBalance">-- ETH</div>
-      <div class="chain" id="navUser">Base L2</div>
+    <!-- Logged-out state -->
+    <div id="navLoggedOut">
+      <a class="btn btn-green btn-sm" href="#" onclick="showSignup();return false">Create Account</a>
+      <a class="btn btn-sm" style="border-color:#888;color:#888" href="https://t.me/clawSpot_bot" target="_blank">Open in TG</a>
     </div>
-    <a class="btn btn-green btn-sm" href="#" onclick="openModal('deposit');return false">Deposit</a>
-    <a class="btn btn-red btn-sm" href="#" onclick="openModal('withdraw');return false">Withdraw</a>
+    <!-- Logged-in state -->
+    <div id="navLoggedIn" style="display:none">
+      <div class="nav-balance">
+        <div class="amount" id="navBalance">-- ETH</div>
+        <div class="chain" id="navUser">Base L2</div>
+      </div>
+      <a class="btn btn-green btn-sm" href="#" onclick="openModal('deposit');return false">Deposit</a>
+      <a class="btn btn-red btn-sm" href="#" onclick="openModal('withdraw');return false">Withdraw</a>
+    </div>
   </div>
 </nav>
+
+<!-- Signup Modal -->
+<div class="modal-bg" id="signupModal">
+  <div class="modal">
+    <div class="modal-close" onclick="closeSignup()">&times;</div>
+    <h2>CREATE ACCOUNT</h2>
+    <p style="font-size:12px;color:#aaa;margin-bottom:16px">Pick a username to save your wins, balance, and leaderboard rank.</p>
+    <div class="modal-label">USERNAME</div>
+    <input class="modal-input" id="signupName" placeholder="CrabKing42" type="text" maxlength="20" style="font-size:16px">
+    <button class="modal-btn" onclick="doSignup()">CREATE ACCOUNT</button>
+    <div id="signupMsg"></div>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:#666">
+      <span>or play via Telegram:</span><br>
+      <a href="https://t.me/clawSpot_bot" target="_blank" style="color:var(--blue);text-decoration:none;font-weight:bold">@clawSpot_bot</a>
+    </div>
+  </div>
+</div>
 
 <!-- Wallet Modal -->
 <div class="modal-bg" id="walletModal">
@@ -565,8 +590,53 @@ async function mDoWithdraw() {
   } catch(e) { msg.className='modal-msg err'; msg.textContent='Network error'; }
 }
 
-// Auto-load balance on page load
-lpAuth().then(()=>lpLoadBalance());
+// === SIGNUP ===
+function showSignup() { document.getElementById('signupModal').classList.add('show'); }
+function closeSignup() { document.getElementById('signupModal').classList.remove('show'); }
+
+async function doSignup() {
+  const name = document.getElementById('signupName').value.trim();
+  const msg = document.getElementById('signupMsg');
+  if (!name || name.length < 2) { msg.className='modal-msg err'; msg.textContent='Min 2 characters'; return; }
+  try {
+    const res = await fetch('/api/auth/signup', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: name }),
+    });
+    const d = await res.json();
+    if (res.ok) {
+      lpToken = d.token;
+      msg.className='modal-msg ok'; msg.textContent='Welcome, '+d.player.username+'!';
+      showLoggedIn(d.player.username, d.player.balance_eth);
+      setTimeout(closeSignup, 1000);
+    } else {
+      msg.className='modal-msg err'; msg.textContent=d.error||'Failed';
+    }
+  } catch(e) { msg.className='modal-msg err'; msg.textContent='Network error'; }
+}
+
+function showLoggedIn(username, balance) {
+  document.getElementById('navLoggedOut').style.display='none';
+  document.getElementById('navLoggedIn').style.display='flex';
+  document.getElementById('navUser').textContent=username;
+  document.getElementById('navBalance').textContent=(balance||0).toFixed(4)+' ETH';
+}
+
+// Auto-login on page load
+async function autoLogin() {
+  const token = await lpAuth();
+  if (token) {
+    try {
+      const res = await fetch('/api/auth/me', { headers:{ Authorization:'Bearer '+token } });
+      if (res.ok) {
+        const d = await res.json();
+        showLoggedIn(d.username, d.balance_eth);
+      }
+    } catch(e) {}
+    lpLoadBalance();
+  }
+}
+autoLogin();
 </script>
 </body>
 </html>
