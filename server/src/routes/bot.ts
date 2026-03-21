@@ -79,7 +79,8 @@ botRouter.post('/webhook', (req: Request, res: Response) => {
 });
 
 function getWebAppUrl(): string {
-  return process.env.WEBAPP_URL || 'https://romantic-curiosity-production-f21e.up.railway.app/play.html';
+  const base = process.env.WEBAPP_URL || 'https://romantic-curiosity-production-f21e.up.railway.app';
+  return base + '/';
 }
 
 async function sendMessage(chatId: number, text: string, extra?: any) {

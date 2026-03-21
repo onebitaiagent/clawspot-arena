@@ -6,9 +6,11 @@
 <title>ClawSpot Arena — Territory Warfare with Crabs</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-// If opened inside Telegram, skip landing page and go straight to game
-if (window.Telegram?.WebApp?.initData) {
-  window.location.replace('play.html');
+// Telegram Mini App setup
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
 }
 </script>
 <style>

@@ -112,6 +112,11 @@ async function getApiBase() {
 }
 async function getToken() {
   if (typeof net !== 'undefined' && net.token) return net.token;
+  // Auto-auth if not logged in yet
+  if (typeof net !== 'undefined' && !net.token) {
+    const ok = await net.auth();
+    if (ok) return net.token;
+  }
   return null;
 }
 
