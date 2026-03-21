@@ -742,6 +742,8 @@ function handleTap(sx,sy){
     return;
   }
   if(game.phase==='gameover'){game.phase='title';return;}
+  // Info-only tutorial steps (4=shells, 5=regions, 6=win) — tap to continue
+  if(game.tutorial>=4&&game.tutorial<7){advanceTutorial();return;}
   if(game.phase==='combat'){
     // QTE tap during combat
     if(game.qte&&game.qte.active&&!game.qte.hit) hitQTE();
@@ -1682,7 +1684,7 @@ function drawHUD() {
 }
 
 function drawHintBar() {
-  if (game.tutorial > 0 && game.tutorial < 5) return; // tutorial handles hints
+  if (game.tutorial > 0 && game.tutorial < 7) return; // tutorial handles hints
   const dpr = devicePixelRatio;
   let hint = '';
   if (game.phase === 'deploy' && game.reinforcements[mySlot()] > 0)
@@ -1718,32 +1720,44 @@ const TUTORIAL_STEPS = [
   { // 1 = deploy
     title: 'DEPLOY TROOPS',
     text: 'Tap your green spots to place crab troops.',
-    sub: 'Each troop makes your territory stronger.',
-    highlight: 'own', // highlight player cells
+    sub: 'More troops = stronger defense & attack power.',
+    highlight: 'own',
   },
   { // 2 = select
     title: 'SELECT A SPOT',
     text: 'Tap one of your spots to select it.',
-    sub: 'Selected spots show attack targets.',
+    sub: 'Red arrows show which enemies you can attack.',
     highlight: 'own',
   },
   { // 3 = attack
     title: 'ATTACK!',
-    text: 'Tap a red-highlighted enemy to attack.',
-    sub: 'RISK dice decide the battle. Tap during QTE for +1!',
+    text: 'Tap a red enemy to attack with RISK dice.',
+    sub: 'Higher dice wins. Ties go to defender. Tap QTE for +1!',
     highlight: 'enemy',
   },
-  { // 4 = expand
-    title: 'KEEP EXPANDING',
-    text: 'Claim empty spots, conquer regions for bonuses.',
-    sub: 'Capture 60 spots to win! You got this.',
+  { // 4 = scoring
+    title: 'SHELLS & TROOPS',
+    text: 'Earn shells every 10s from spots you hold.',
+    sub: 'Reef=1.5x, Coral=2x, Crown=3x shells. Buy troops for 10 shells.',
+    highlight: null,
+  },
+  { // 5 = regions
+    title: 'REGIONS & BONUSES',
+    text: 'Control all spots in a region = bonus troops!',
+    sub: 'Crown=+7, Abyss=+5, Trench=+4. New troops every 30s.',
+    highlight: null,
+  },
+  { // 6 = win
+    title: 'HOW TO WIN',
+    text: 'Capture 60 of 100 spots to dominate!',
+    sub: 'Expand fast, fortify borders, crush the competition.',
     highlight: null,
   },
 ];
 
 function drawTutorial() {
   const step = game.tutorial;
-  if (step <= 0 || step >= 5) return;
+  if (step <= 0 || step >= 7) return;
   const info = TUTORIAL_STEPS[step];
   if (!info) return;
 
@@ -1808,8 +1822,8 @@ function drawTutorial() {
 
   // Step indicator (dots)
   const dotY = cardY + 14 * dpr;
-  for (let i = 1; i <= 4; i++) {
-    const dx = W / 2 + (i - 2.5) * 16 * dpr;
+  for (let i = 1; i <= 6; i++) {
+    const dx = W / 2 + (i - 3.5) * 14 * dpr;
     ctx.fillStyle = i === step ? '#00ff88' : i < step ? '#006633' : '#333';
     ctx.beginPath();
     ctx.arc(dx, dotY, 4 * dpr, 0, Math.PI * 2);
@@ -1835,13 +1849,14 @@ function drawTutorial() {
   // Skip button
   ctx.fillStyle = '#444';
   ctx.font = `${Math.max(9 * dpr, 10)}px monospace`;
-  ctx.fillText('tap anywhere outside to skip tutorial', W / 2, cardY + cardH + 14 * dpr);
+  const skipText = (step >= 4) ? 'tap anywhere to continue' : 'tap anywhere outside to skip';
+  ctx.fillText(skipText, W / 2, cardY + cardH + 14 * dpr);
 }
 
 function advanceTutorial() {
   if (game.tutorial <= 0) return;
   game.tutorial++;
-  if (game.tutorial >= 5) {
+  if (game.tutorial >= 7) {
     game.tutorial = 0;
     game.firstGame = false;
   }
