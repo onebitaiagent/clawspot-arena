@@ -490,22 +490,8 @@ let lpToken = null;
 
 async function lpAuth() {
   if (lpToken) return lpToken;
-  try {
-    // Try TG auth first
-    const tgApp = window.Telegram?.WebApp;
-    if (tgApp && tgApp.initData) {
-      const res = await fetch('/api/auth/telegram', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ initData: tgApp.initData }),
-      });
-      if (res.ok) { const d = await res.json(); lpToken = d.token; return lpToken; }
-    }
-    // Guest
-    const res = await fetch('/api/auth/guest', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-    });
-    if (res.ok) { const d = await res.json(); lpToken = d.token; updateNavUser(d.player.username); return lpToken; }
-  } catch(e) {}
+  // Only return saved token — never auto-create guest on landing page
+  try { const s = localStorage.getItem('clawspot_token'); if (s) { lpToken = s; return s; } } catch(e) {}
   return null;
 }
 
@@ -606,6 +592,7 @@ async function doSignup() {
     const d = await res.json();
     if (res.ok) {
       lpToken = d.token;
+      try { localStorage.setItem('clawspot_token', d.token); } catch(e) {}
       msg.className='modal-msg ok'; msg.textContent='Welcome, '+d.player.username+'!';
       showLoggedIn(d.player.username, d.player.balance_eth);
       setTimeout(closeSignup, 1000);
@@ -622,19 +609,39 @@ function showLoggedIn(username, balance) {
   document.getElementById('navBalance').textContent=(balance||0).toFixed(4)+' ETH';
 }
 
-// Auto-login on page load
+// Auto-login on page load — only restore saved session, never create guest
 async function autoLogin() {
-  const token = await lpAuth();
-  if (token) {
+  // Check for saved token
+  let saved = null;
+  try { saved = localStorage.getItem('clawspot_token'); } catch(e) {}
+
+  // TG auth if inside Telegram
+  const tgApp = window.Telegram?.WebApp;
+  if (!saved && tgApp && tgApp.initData) {
     try {
-      const res = await fetch('/api/auth/me', { headers:{ Authorization:'Bearer '+token } });
+      const res = await fetch('/api/auth/telegram', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ initData: tgApp.initData }),
+      });
       if (res.ok) {
         const d = await res.json();
-        showLoggedIn(d.username, d.balance_eth);
+        saved = d.token;
+        try { localStorage.setItem('clawspot_token', saved); } catch(e) {}
       }
     } catch(e) {}
-    lpLoadBalance();
   }
+
+  if (!saved) return; // not logged in — show signup buttons
+
+  // Validate saved token
+  try {
+    const res = await fetch('/api/auth/me', { headers:{ Authorization:'Bearer '+saved } });
+    if (res.ok) {
+      const d = await res.json();
+      lpToken = saved;
+      showLoggedIn(d.username, d.balance_eth);
+    }
+  } catch(e) {}
 }
 autoLogin();
 </script>
