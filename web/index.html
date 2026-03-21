@@ -152,6 +152,29 @@ body { min-height:100vh; overflow-x:hidden; }
 /* Crab ASCII */
 .crab { font-size:40px; line-height:1; margin-bottom:8px; display:inline-block; animation:bob 2s ease-in-out infinite; }
 @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+/* Wallet Modal */
+.modal-bg{display:none;position:fixed;inset:0;z-index:200;background:rgba(4,4,16,.9);align-items:center;justify-content:center;padding:20px}
+.modal-bg.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:400px;position:relative}
+.modal-close{position:absolute;top:12px;right:16px;color:var(--dim);font-size:22px;cursor:pointer}
+.modal h2{color:var(--gold);font-size:16px;margin-bottom:16px}
+.modal-balance{font-size:24px;font-weight:bold;color:#fff;margin-bottom:4px}
+.modal-chain{color:var(--green);font-size:11px;margin-bottom:16px}
+.modal-tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.modal-tab{flex:1;padding:8px;text-align:center;font-size:12px;font-weight:bold;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent}
+.modal-tab.active{color:var(--green);border-color:var(--green)}
+.modal-label{color:var(--dim);font-size:11px;margin-bottom:4px;margin-top:12px}
+.modal-addr{background:#080818;border:1px solid #222;border-radius:8px;padding:10px;font-size:11px;color:var(--green);word-break:break-all;cursor:pointer}
+.modal-addr:active{background:#101028}
+.modal-input{background:#080818;border:1px solid #222;border-radius:8px;padding:10px;font-size:14px;color:#fff;width:100%;font-family:inherit;outline:none;margin-top:4px}
+.modal-input:focus{border-color:var(--green)}
+.modal-btn{display:block;width:100%;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:bold;cursor:pointer;border:1px solid;margin-top:12px;text-align:center;background:#0d2d14;border-color:var(--green);color:var(--green)}
+.modal-btn.withdraw{background:#2a1212;border-color:var(--red);color:var(--red)}
+.modal-msg{text-align:center;padding:6px;font-size:12px;border-radius:6px;margin-top:8px}
+.modal-msg.ok{color:var(--green);background:#0d2d14}
+.modal-msg.err{color:var(--red);background:#2a1212}
+.modal-note{font-size:10px;color:#444;margin-top:10px}
 </style>
 </head>
 <body>
@@ -166,13 +189,46 @@ body { min-height:100vh; overflow-x:hidden; }
   <div class="nav-logo"><span>CLAWSPOT </span><span>ARENA</span></div>
   <div class="nav-right">
     <div class="nav-balance">
-      <div class="amount">0.247 ETH</div>
-      <div class="chain">Base L2</div>
+      <div class="amount" id="navBalance">-- ETH</div>
+      <div class="chain" id="navUser">Base L2</div>
     </div>
-    <a class="btn btn-green btn-sm" href="#">Deposit</a>
-    <a class="btn btn-red btn-sm" href="#">Withdraw</a>
+    <a class="btn btn-green btn-sm" href="#" onclick="openModal('deposit');return false">Deposit</a>
+    <a class="btn btn-red btn-sm" href="#" onclick="openModal('withdraw');return false">Withdraw</a>
   </div>
 </nav>
+
+<!-- Wallet Modal -->
+<div class="modal-bg" id="walletModal">
+  <div class="modal">
+    <div class="modal-close" onclick="closeModal()">&times;</div>
+    <h2>WALLET</h2>
+    <div class="modal-balance" id="modalBalance">-- ETH</div>
+    <div class="modal-chain">Base L2</div>
+
+    <div class="modal-tabs">
+      <div class="modal-tab active" id="mTabDep" onclick="mSwitchTab('deposit')">DEPOSIT</div>
+      <div class="modal-tab" id="mTabWith" onclick="mSwitchTab('withdraw')">WITHDRAW</div>
+    </div>
+
+    <div id="mDepositPanel">
+      <p style="font-size:12px;color:#aaa;margin-bottom:10px">Send ETH on <b style="color:var(--green)">Base L2</b> to your deposit address:</p>
+      <div class="modal-label">YOUR DEPOSIT ADDRESS</div>
+      <div class="modal-addr" id="mDepAddr" onclick="mCopyAddr()">Loading...</div>
+      <div id="mDepMsg"></div>
+      <div class="modal-note">Only send ETH on Base L2. Min: 0.001 ETH. Auto-detected in ~15s.</div>
+    </div>
+
+    <div id="mWithdrawPanel" style="display:none">
+      <div class="modal-label">DESTINATION ADDRESS</div>
+      <input class="modal-input" id="mWithAddr" placeholder="0x..." type="text">
+      <div class="modal-label">AMOUNT (ETH)</div>
+      <input class="modal-input" id="mWithAmount" placeholder="0.01" type="number" step="0.001" min="0.001">
+      <button class="modal-btn withdraw" onclick="mDoWithdraw()">WITHDRAW</button>
+      <div id="mWithMsg"></div>
+      <div class="modal-note">Sent on Base L2. Gas fee deducted automatically.</div>
+    </div>
+  </div>
+</div>
 
 <!-- Hero -->
 <section class="hero">
@@ -403,6 +459,114 @@ async function loadFeed(){
 // Load on page ready
 loadLeaderboard();
 loadFeed();
+
+// === WALLET ===
+let lpToken = null;
+
+async function lpAuth() {
+  if (lpToken) return lpToken;
+  try {
+    // Try TG auth first
+    const tgApp = window.Telegram?.WebApp;
+    if (tgApp && tgApp.initData) {
+      const res = await fetch('/api/auth/telegram', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ initData: tgApp.initData }),
+      });
+      if (res.ok) { const d = await res.json(); lpToken = d.token; return lpToken; }
+    }
+    // Guest
+    const res = await fetch('/api/auth/guest', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+    });
+    if (res.ok) { const d = await res.json(); lpToken = d.token; updateNavUser(d.player.username); return lpToken; }
+  } catch(e) {}
+  return null;
+}
+
+function updateNavUser(name) {
+  document.getElementById('navUser').textContent = name || 'Base L2';
+}
+
+async function lpLoadBalance() {
+  const token = await lpAuth();
+  if (!token) { document.getElementById('modalBalance').textContent = 'Connect failed'; return; }
+  try {
+    const res = await fetch('/api/wallet/balance', { headers:{ Authorization:'Bearer '+token } });
+    if (res.ok) {
+      const d = await res.json();
+      const bal = (d.balance_eth||0).toFixed(4)+' ETH';
+      document.getElementById('modalBalance').textContent = bal;
+      document.getElementById('navBalance').textContent = bal;
+    }
+  } catch(e) { document.getElementById('modalBalance').textContent = 'Error'; }
+}
+
+async function lpLoadAddr() {
+  const token = await lpAuth();
+  if (!token) { document.getElementById('mDepAddr').textContent = 'Auth failed'; return; }
+  try {
+    const res = await fetch('/api/wallet/deposit-address', { headers:{ Authorization:'Bearer '+token } });
+    if (res.ok) {
+      const d = await res.json();
+      document.getElementById('mDepAddr').textContent = d.address;
+      document.getElementById('mDepAddr').dataset.addr = d.address;
+    } else {
+      const err = await res.json();
+      document.getElementById('mDepAddr').textContent = err.error || 'Not available';
+    }
+  } catch(e) { document.getElementById('mDepAddr').textContent = 'Not configured'; }
+}
+
+function openModal(tab) {
+  document.getElementById('walletModal').classList.add('show');
+  mSwitchTab(tab || 'deposit');
+  lpLoadBalance();
+  lpLoadAddr();
+}
+function closeModal() { document.getElementById('walletModal').classList.remove('show'); }
+
+function mSwitchTab(tab) {
+  document.getElementById('mTabDep').classList.toggle('active', tab==='deposit');
+  document.getElementById('mTabWith').classList.toggle('active', tab==='withdraw');
+  document.getElementById('mDepositPanel').style.display = tab==='deposit'?'block':'none';
+  document.getElementById('mWithdrawPanel').style.display = tab==='withdraw'?'block':'none';
+}
+
+function mCopyAddr() {
+  const addr = document.getElementById('mDepAddr').dataset.addr;
+  if (!addr) return;
+  navigator.clipboard.writeText(addr).then(() => {
+    const msg = document.getElementById('mDepMsg');
+    msg.className='modal-msg ok'; msg.textContent='Copied!';
+    setTimeout(()=>msg.textContent='',2000);
+  });
+}
+
+async function mDoWithdraw() {
+  const token = await lpAuth();
+  if (!token) return;
+  const addr = document.getElementById('mWithAddr').value.trim();
+  const amount = document.getElementById('mWithAmount').value.trim();
+  const msg = document.getElementById('mWithMsg');
+  if (!addr||!amount) { msg.className='modal-msg err'; msg.textContent='Fill in all fields'; return; }
+  try {
+    const res = await fetch('/api/wallet/withdraw', {
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+      body: JSON.stringify({ to_address:addr, amount_eth:amount }),
+    });
+    const d = await res.json();
+    if (res.ok) {
+      msg.className='modal-msg ok'; msg.textContent='Sent! TX: '+d.tx_hash.slice(0,18)+'...';
+      lpLoadBalance();
+    } else {
+      msg.className='modal-msg err'; msg.textContent=d.error||'Failed';
+    }
+  } catch(e) { msg.className='modal-msg err'; msg.textContent='Network error'; }
+}
+
+// Auto-load balance on page load
+lpAuth().then(()=>lpLoadBalance());
 </script>
 </body>
 </html>
