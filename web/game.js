@@ -1454,7 +1454,7 @@ function drawJellyfish(cx, cy, s, color, time) {
   // Bell (translucent dome)
   ctx.globalAlpha = 0.7;
   const bg = ctx.createRadialGradient(cx, jy - s * 0.1, 0, cx, jy, s * 0.45);
-  bg.addColorStop(0, lightenColor(color, 1.5)); bg.addColorStop(0.5, color); bg.addColorStop(1, darkenColor(color, 0.6) + '88');
+  bg.addColorStop(0, lightenColor(color, 1.5)); bg.addColorStop(0.5, color); bg.addColorStop(1, darkenColor(color, 0.4));
   ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(cx, jy - s * 0.05, s * 0.4, s * 0.35, 0, Math.PI, Math.PI * 2); ctx.fill();
   // Bottom rim
   ctx.fillStyle = darkenColor(color, 0.7);
@@ -2821,8 +2821,9 @@ function gameLoop(ts) {
   const dt = game.lastTime ? Math.min((ts - game.lastTime) / 1000, 0.05) : 0.016;
   game.lastTime = ts; game.dt = dt; game.time += dt;
 
-  update(dt);
+  try { update(dt); } catch(e) { console.error('UPDATE ERROR:', e); }
 
+  try {
   if (game.phase === 'title') {
     drawTitle();
     drawEffects();
@@ -2853,6 +2854,7 @@ function gameLoop(ts) {
     drawTutorial();
     if (game.phase === 'gameover') drawGameOver();
   }
+  } catch(e) { console.error('RENDER ERROR:', e); }
   requestAnimationFrame(gameLoop);
 }
 
