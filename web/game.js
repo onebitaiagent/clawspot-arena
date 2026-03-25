@@ -850,7 +850,7 @@ function handleTap(sx,sy){
     game.phase='title';game.lobby=null;
     return;
   }
-  if(game.phase==='gameover'){game.phase='title';return;}
+  if(game.phase==='gameover'){game.phase='title';clearSavedGameState();return;}
   // Skip tutorial button
   if(game.tutorial>0&&game.tutorial<7&&game._skipTutorialRect){
     const sr=game._skipTutorialRect;
@@ -2884,20 +2884,117 @@ function gameLoop(ts) {
 
 game.phase = 'title';
 
-// Try to restore saved session on load
-(async function restoreSession() {
-  const saved = await net.loadSavedToken();
-  if (saved) {
+// === GAME STATE SAVE/RESTORE ===
+function saveGameState() {
+  if (game.phase !== 'play' && game.phase !== 'deploy' && game.phase !== 'combat') return;
+  try {
+    const state = {
+      cells: cells.map(c => ({ owner: c.owner, troops: c.troops })),
+      shells: game.shells,
+      reinforcements: game.reinforcements,
+      reinforceTimer: game.reinforceTimer,
+      shellTimer: game.shellTimer,
+      phase: game.phase === 'combat' ? 'play' : game.phase,
+      playerSpecies: game.playerSpecies,
+      selectedSpecies: game.selectedSpecies,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem('clawrisk_gamestate', JSON.stringify(state));
+    // Also try TG CloudStorage
     try {
-      const res = await fetch(net.apiBase + '/api/auth/me', { headers: { Authorization: 'Bearer ' + saved } });
+      const tg = window.Telegram?.WebApp;
+      if (tg?.CloudStorage) tg.CloudStorage.setItem('gamestate', JSON.stringify(state));
+    } catch(e) {}
+  } catch(e) {}
+}
+
+function loadGameState() {
+  try {
+    const raw = localStorage.getItem('clawrisk_gamestate');
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    // Only restore if saved less than 30 min ago
+    if (Date.now() - state.savedAt > 30 * 60 * 1000) {
+      localStorage.removeItem('clawrisk_gamestate');
+      return false;
+    }
+    // Restore cells
+    for (let i = 0; i < state.cells.length && i < cells.length; i++) {
+      cells[i].owner = state.cells[i].owner;
+      cells[i].troops = state.cells[i].troops;
+    }
+    game.shells = state.shells;
+    game.reinforcements = state.reinforcements;
+    game.reinforceTimer = state.reinforceTimer;
+    game.shellTimer = state.shellTimer;
+    game.phase = state.phase;
+    game.playerSpecies = state.playerSpecies || game.playerSpecies;
+    game.selectedSpecies = state.selectedSpecies || game.selectedSpecies;
+    PLAYER_COLORS[0] = SPECIES[game.selectedSpecies]?.color || '#00ff88';
+    game.firstGame = false;
+    game.tutorial = 0;
+    return true;
+  } catch(e) { return false; }
+}
+
+function clearSavedGameState() {
+  try { localStorage.removeItem('clawrisk_gamestate'); } catch(e) {}
+  try {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.CloudStorage) tg.CloudStorage.removeItem('gamestate');
+  } catch(e) {}
+}
+
+// Auto-save every 5 seconds during gameplay
+setInterval(saveGameState, 5000);
+
+// Clear save on game over
+const _origUpdate = update;
+// (we'll handle clearing in gameover tap instead)
+
+// Try to restore saved session + game state on load
+(async function restoreSession() {
+  // Auth first — do TG auth immediately if available
+  const tg = window.Telegram?.WebApp;
+  if (tg && tg.initData && !net.token) {
+    try {
+      const res = await fetch(net.apiBase + '/api/auth/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
       if (res.ok) {
         const d = await res.json();
-        net.token = saved;
-        net.playerId = d.id;
-        net.username = d.username;
+        net.token = d.token;
+        net.playerId = d.player.id;
+        net.username = d.player.username;
+        net.saveToken(d.token);
         fetchEthBalance();
       }
     } catch(e) {}
+  }
+
+  // Then try saved token
+  if (!net.token) {
+    const saved = await net.loadSavedToken();
+    if (saved) {
+      try {
+        const res = await fetch(net.apiBase + '/api/auth/me', { headers: { Authorization: 'Bearer ' + saved } });
+        if (res.ok) {
+          const d = await res.json();
+          net.token = saved;
+          net.playerId = d.id;
+          net.username = d.username;
+          fetchEthBalance();
+        }
+      } catch(e) {}
+    }
+  }
+
+  // Restore game state if we have one
+  if (loadGameState()) {
+    // Game restored — skip title screen
+    spawnFloat(W / 2, H * 0.5, 'Game restored!', '#00ff88');
   }
 })();
 

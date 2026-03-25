@@ -224,8 +224,19 @@ if (tg) {
   tg.expand();
   tg.disableVerticalSwipes();
   document.body.style.background = tg.themeParams?.bg_color || '#060614';
-  tg.BackButton.onClick(() => tg.close());
+  tg.BackButton.onClick(() => {
+    // Save game state before closing
+    if (typeof saveGameState === 'function') saveGameState();
+    tg.close();
+  });
 }
+// Save on page hide (browser tab switch, app minimize)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && typeof saveGameState === 'function') saveGameState();
+});
+window.addEventListener('beforeunload', () => {
+  if (typeof saveGameState === 'function') saveGameState();
+});
 
 // Wallet UI functions (use net.token from game.js)
 function openWallet() {
