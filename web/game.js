@@ -578,7 +578,17 @@ function initOfflineGame() {
   for(const c of cells)if(c.owner===-1&&Math.random()<.2)c.troops=Math.floor(Math.random()*2)+1;
   game.phase='deploy';
   game.reinforceTimer=30;game.shellTimer=10;
-  game._turnSlot=0;game._playerActed=false;
+  game._turnSlot=0;game._playerActed=false;game._turnShown=false;game._turnAnnounce=0;
+  game._highlightCell=null;game._highlightTimer=0;
+  // Apply species colors — ensure no duplicates
+  PLAYER_COLORS[0] = SPECIES[game.selectedSpecies]?.color || '#00ff88';
+  game.playerSpecies[0] = game.selectedSpecies;
+  const avail = SPECIES_LIST.filter(s => s !== game.selectedSpecies);
+  for (let ai = 1; ai < 4; ai++) {
+    game.playerSpecies[ai] = avail[(ai - 1) % avail.length];
+    PLAYER_COLORS[ai] = SPECIES[game.playerSpecies[ai]].color;
+    PLAYER_NAMES[ai] = SPECIES[game.playerSpecies[ai]].name;
+  }
   // Start tutorial on first game
   if(game.firstGame) game.tutorial=1;
 }
@@ -2163,25 +2173,19 @@ function drawHintBar() {
     hint = 'Combat in progress...';
 
   if (!hint) return;
-  const barH = 32 * dpr;
-  const barY = gridOffsetY + cellSize * 10 + 6;
+  const barH = 24 * dpr;
+  const barY = gridOffsetY + cellSize * 10 + 4;
 
-  // Turn announcement gets a colored bar
   const isTurnAnnounce = game._turnAnnounce > 0;
   ctx.fillStyle = isTurnAnnounce ? 'rgba(10,10,30,0.92)' : 'rgba(6,6,20,0.85)';
-  roundRect(ctx, W * 0.04, barY, W * 0.92, barH, 8); ctx.fill();
-  if (isTurnAnnounce) {
-    ctx.strokeStyle = hintColor + '66';
-    ctx.lineWidth = 2;
-  } else {
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-  }
-  roundRect(ctx, W * 0.04, barY, W * 0.92, barH, 8); ctx.stroke();
+  roundRect(ctx, W * 0.04, barY, W * 0.92, barH, 6); ctx.fill();
+  ctx.strokeStyle = isTurnAnnounce ? (hintColor + '66') : '#222';
+  ctx.lineWidth = isTurnAnnounce ? 1.5 : 1;
+  roundRect(ctx, W * 0.04, barY, W * 0.92, barH, 6); ctx.stroke();
   ctx.fillStyle = hintColor;
-  ctx.font = `bold ${Math.max(isTurnAnnounce ? 12 : 10 * dpr, isTurnAnnounce ? 14 : 11)}px monospace`;
+  ctx.font = `bold ${Math.max(10 * dpr, 11)}px monospace`;
   ctx.textAlign = 'center';
-  ctx.fillText(hint, W / 2, barY + barH * 0.6);
+  ctx.fillText(hint, W / 2, barY + barH * 0.65);
 }
 
 // === TUTORIAL OVERLAY ===
