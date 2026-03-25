@@ -881,6 +881,13 @@ function handleTap(sx,sy){
       if(typeof openHelp==='function') openHelp();return;
     }
   }
+  // Reset button
+  if(game._resetBtnRect){
+    const rb=game._resetBtnRect;
+    if(px>=rb.x&&px<=rb.x+rb.w&&py>=rb.y&&py<=rb.y+rb.h){
+      resetGame();return;
+    }
+  }
   // In-game wallet button (only if logged in)
   if(game._walletBtnRect2 && net.token){
     const wb=game._walletBtnRect2;
@@ -2071,6 +2078,19 @@ function drawHUD() {
       ctx.fillText(net.username, muteX + muteSize, muteY + muteSize + 26 * dpr);
     }
   }
+
+  // Reset button (bottom-left)
+  const rstW = 50 * dpr, rstH = 22 * dpr;
+  const rstX = 8 * dpr, rstY = H - rstH - 70 * dpr;
+  ctx.fillStyle = 'rgba(20,12,12,0.7)';
+  roundRect(ctx, rstX, rstY, rstW, rstH, 5); ctx.fill();
+  ctx.strokeStyle = '#ff444444'; ctx.lineWidth = 1;
+  roundRect(ctx, rstX, rstY, rstW, rstH, 5); ctx.stroke();
+  ctx.fillStyle = '#ff4444';
+  ctx.font = `${Math.max(8*dpr,9)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('RESET', rstX + rstW/2, rstY + rstH * 0.65);
+  game._resetBtnRect = { x: rstX, y: rstY, w: rstW, h: rstH };
 }
 
 function drawHintBar() {
@@ -2981,10 +3001,13 @@ function gameLoop(ts) {
 game.phase = 'title';
 
 // === GAME STATE SAVE/RESTORE ===
+const SAVE_VERSION = 2; // bump to invalidate old saves
+
 function saveGameState() {
   if (game.phase !== 'play' && game.phase !== 'deploy' && game.phase !== 'combat') return;
   try {
     const state = {
+      v: SAVE_VERSION,
       cells: cells.map(c => ({ owner: c.owner, troops: c.troops })),
       shells: game.shells,
       reinforcements: game.reinforcements,
@@ -3009,13 +3032,23 @@ function loadGameState() {
     const raw = localStorage.getItem('clawrisk_gamestate');
     if (!raw) return false;
     const state = JSON.parse(raw);
-    // Only restore if saved less than 30 min ago
-    if (Date.now() - state.savedAt > 24 * 60 * 60 * 1000) { // 24 hours
-      localStorage.removeItem('clawrisk_gamestate');
+    // Version check — reject old saves
+    if (state.v !== SAVE_VERSION) {
+      clearSavedGameState();
+      return false;
+    }
+    // Expiry check
+    if (Date.now() - state.savedAt > 24 * 60 * 60 * 1000) {
+      clearSavedGameState();
+      return false;
+    }
+    // Validate: must have 100 cells
+    if (!state.cells || state.cells.length !== 100) {
+      clearSavedGameState();
       return false;
     }
     // Restore cells
-    for (let i = 0; i < state.cells.length && i < cells.length; i++) {
+    for (let i = 0; i < 100; i++) {
       cells[i].owner = state.cells[i].owner;
       cells[i].troops = state.cells[i].troops;
     }
@@ -3030,7 +3063,18 @@ function loadGameState() {
     game.firstGame = false;
     game.tutorial = 0;
     return true;
-  } catch(e) { return false; }
+  } catch(e) { clearSavedGameState(); return false; }
+}
+
+function resetGame() {
+  clearSavedGameState();
+  game.phase = 'title';
+  game.selectedCell = null;
+  game.combatState = null;
+  game.fortifySource = null;
+  game.troopPicker = null;
+  game.winner = -1;
+  for (const c of cells) { c.owner = -1; c.troops = 0; }
 }
 
 function clearSavedGameState() {

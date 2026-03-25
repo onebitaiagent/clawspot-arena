@@ -683,52 +683,65 @@ async function autoLogin() {
   const tgApp = window.Telegram?.WebApp;
   const isTG = !!(tgApp && tgApp.initData);
 
-  // If in TG, show loading state; otherwise show logged-out buttons
+  // Show loading for TG users, logged-out for web users
   if (isTG) {
     document.getElementById('navLoading').style.display = 'block';
     document.getElementById('navLoggedOut').style.display = 'none';
   } else {
-    document.getElementById('navLoading').style.display = 'none';
     document.getElementById('navLoggedOut').style.display = 'flex';
   }
 
-  // Check for saved token
-  let saved = null;
-  try { saved = localStorage.getItem('clawrisk_token'); } catch(e) {}
+  // Timeout helper
+  function fetchWithTimeout(url, opts, ms) {
+    return Promise.race([
+      fetch(url, opts),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+    ]);
+  }
 
-  // TG auth if inside Telegram
-  if (!saved && isTG) {
+  function showNotLoggedIn() {
+    document.getElementById('navLoading').style.display = 'none';
+    document.getElementById('navLoggedOut').style.display = 'flex';
+    if (isTG) document.getElementById('openInTgBtn').style.display = 'none';
+  }
+
+  // 1. TG auth — fastest path for TG users (skip token check)
+  if (isTG) {
     try {
-      const res = await fetch('/api/auth/telegram', {
+      const res = await fetchWithTimeout('/api/auth/telegram', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ initData: tgApp.initData }),
-      });
+      }, 5000);
       if (res.ok) {
         const d = await res.json();
-        saved = d.token;
-        try { localStorage.setItem('clawrisk_token', saved); } catch(e) {}
+        lpToken = d.token;
+        try { localStorage.setItem('clawrisk_token', d.token); } catch(e) {}
+        showLoggedIn(d.player.username, d.player.balance_eth);
+        return;
       }
     } catch(e) {}
-  }
-
-  if (!saved) {
-    // Not logged in — show appropriate buttons
-    document.getElementById('navLoading').style.display = 'none';
-    document.getElementById('navLoggedOut').style.display = 'flex';
-    // Hide "Open in TG" if already in TG
-    if (isTG) document.getElementById('openInTgBtn').style.display = 'none';
+    showNotLoggedIn();
     return;
   }
 
+  // 2. Web — check saved token
+  let saved = null;
+  try { saved = localStorage.getItem('clawrisk_token'); } catch(e) {}
+  if (!saved) { showNotLoggedIn(); return; }
+
   // Validate saved token
   try {
-    const res = await fetch('/api/auth/me', { headers:{ Authorization:'Bearer '+saved } });
+    const res = await fetchWithTimeout('/api/auth/me', { headers:{ Authorization:'Bearer '+saved } }, 4000);
     if (res.ok) {
       const d = await res.json();
       lpToken = saved;
       showLoggedIn(d.username, d.balance_eth);
+      return;
     }
   } catch(e) {}
+  // Token invalid — clear and show signup
+  try { localStorage.removeItem('clawrisk_token'); } catch(e) {}
+  showNotLoggedIn();
 }
 autoLogin();
 </script>
