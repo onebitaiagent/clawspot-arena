@@ -2012,13 +2012,14 @@ function drawHUD() {
     ctx.fillText('Regions: ' + rc + '/8', W / 2, ty + 44 * dpr);
   }
 
-  // Opponents
+  // Opponents — right side, below the icon buttons row
   ctx.textAlign = 'right';
   ctx.font = `${sf}px monospace`;
+  const oppY = tickerH + tbh + 8;
   for (let p = 1; p < 4; p++) {
     const tc = countTerritories(p);
     ctx.fillStyle = tc > 0 ? PLAYER_COLORS[p] : '#333';
-    ctx.fillText(PLAYER_NAMES[p].slice(0, 5) + ' ' + (tc > 0 ? tc : 'X'), W - 8 * dpr, ty + (15 + (p - 1) * 15) * dpr);
+    ctx.fillText(PLAYER_NAMES[p].slice(0, 5) + ' ' + (tc > 0 ? tc : 'X'), W - 8 * dpr, oppY + (p - 1) * 13 * dpr);
   }
 
   // === BOTTOM ===
