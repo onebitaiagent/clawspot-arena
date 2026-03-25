@@ -578,6 +578,7 @@ function initOfflineGame() {
   for(const c of cells)if(c.owner===-1&&Math.random()<.2)c.troops=Math.floor(Math.random()*2)+1;
   game.phase='deploy';
   game.reinforceTimer=30;game.shellTimer=10;
+  game._turnSlot=0;game._playerActed=false;
   // Start tutorial on first game
   if(game.firstGame) game.tutorial=1;
 }
@@ -941,7 +942,7 @@ function handleTap(sx,sy){
       return;
     }
     // Tapped non-owned cell — switch to play, save remaining troops
-    game.phase='play';
+    game.phase='play';game._playerActed=true;
     if(game.tutorial===1) advanceTutorial();
   }
   // FORTIFY
@@ -995,9 +996,9 @@ function handleTap(sx,sy){
       const fromIdx=game.selectedCell.row*10+game.selectedCell.col;
       const toIdx=cell.row*10+cell.col;
       net.send({type:'attack',fromIdx,toIdx});
-      game.attackCooldown[s]=2;game.selectedCell=null;
+      game.attackCooldown[s]=2;game.selectedCell=null;game._playerActed=true;
     } else {
-      startPlayerCombat(game.selectedCell,cell);game.attackCooldown[s]=2;game.selectedCell=null;
+      startPlayerCombat(game.selectedCell,cell);game.attackCooldown[s]=2;game.selectedCell=null;game._playerActed=true;
     }
     if(game.tutorial===3) advanceTutorial(); // attacked → expand
     return;
@@ -1040,6 +1041,7 @@ function doClaimCell(fromCell, toCell, count, slot) {
   haptic('medium');
   game.attackCooldown[slot] = 0.5;
   game.selectedCell = null;
+  game._playerActed = true;
   if (game.tutorial===3||game.tutorial===4) advanceTutorial();
 }
 
@@ -2958,11 +2960,22 @@ function update(dt) {
     game.shellTimer -= dt;
     if (game.shellTimer <= 0) { game.shellTimer = 10; doShellIncome(); }
   }
-  // Round-robin: only ONE AI acts per frame
+  // Round-robin turns: 0(you) → 1 → 2 → 3 → 0(you) → ...
+  // AI only acts after player has taken an action (attack or claim)
   if (game.phase === 'play') {
-    if (!game._aiTurnIdx) game._aiTurnIdx = 1;
-    aiTurn(game._aiTurnIdx);
-    game._aiTurnIdx = game._aiTurnIdx >= 3 ? 1 : game._aiTurnIdx + 1;
+    if (!game._turnSlot) game._turnSlot = 0; // start with player
+    if (game._turnSlot === 0) {
+      // Player's turn — wait for them to act
+      // (player actions set game._playerActed = true)
+    } else {
+      // AI turn
+      aiTurn(game._turnSlot);
+    }
+    // Advance turn after AI acts (or if player already acted)
+    if (game._turnSlot > 0 || game._playerActed) {
+      game._turnSlot = (game._turnSlot + 1) % 4;
+      game._playerActed = false;
+    }
   }
   if (game.phase === 'deploy' && game.reinforcements[me] <= 0) game.phase = 'play';
   for (let p = 0; p < 4; p++) {
