@@ -625,12 +625,25 @@ async function doSignup() {
     const d = await res.json();
     if (res.ok) {
       lpHandleAuth(d);
-      msg.className='modal-msg ok'; msg.textContent='Welcome, '+d.player.username+'!';
-      setTimeout(closeSignup, 1000);
+      if (d.wallet && d.wallet.address) lpDownloadWallet(d.player.username, d.wallet.address, d.wallet.privateKey);
+      msg.className='modal-msg ok'; msg.textContent='Welcome! Wallet backup downloaded.';
+      setTimeout(closeSignup, 1500);
     } else {
       msg.className='modal-msg err'; msg.textContent=d.error||'Failed';
     }
   } catch(e) { msg.className='modal-msg err'; msg.textContent='Network error'; }
+}
+
+function lpDownloadWallet(username, address, privateKey) {
+  if (!address || !privateKey) return;
+  const txt = 'CLAWRISK ARENA - WALLET BACKUP\n==============================\n\n' +
+    'Username: '+username+'\nChain: Base L2\n\nDeposit Address:\n'+address+'\n\nPrivate Key:\n'+privateKey+
+    '\n\nIMPORTANT:\n- NEVER share your private key\n- Import into MetaMask to access funds\n- Send ETH on Base L2 to deposit address\n';
+  const blob = new Blob([txt], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'clawrisk-wallet-'+username+'.txt';
+  a.click();
 }
 
 async function doLogin() {

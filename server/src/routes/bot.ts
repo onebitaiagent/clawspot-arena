@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
+import { findPlayerByTelegramId } from '../services/db';
+import { ethers } from 'ethers';
 
 export const botRouter = Router();
 
 // Telegram webhook endpoint — receives updates from Bot API
-botRouter.post('/webhook', (req: Request, res: Response) => {
+botRouter.post('/webhook', async (req: Request, res: Response) => {
   const update = req.body;
 
   // Handle /start command
@@ -63,16 +65,73 @@ botRouter.post('/webhook', (req: Request, res: Response) => {
   // Handle /balance
   if (update.message?.text === '/balance') {
     const chatId = update.message.chat.id;
-    sendMessage(chatId,
-      `💰 Open the game to check your balance and deposit/withdraw ETH.`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '💰 Open Wallet', web_app: { url: getWebAppUrl() } }
-          ]]
-        }
+    const tgId = update.message.from?.id;
+    if (tgId) {
+      const player = await findPlayerByTelegramId(tgId);
+      if (player) {
+        sendMessage(chatId,
+          `💰 <b>Your Balance</b>\n\n` +
+          `ETH: <code>${(player.balance_eth || 0).toFixed(4)} ETH</code>\n` +
+          `Shells: <code>${player.balance_shells || 0}</code>\n` +
+          `Wins: <code>${player.wins || 0}</code>\n` +
+          (player.deposit_address ? `\nDeposit Address:\n<code>${player.deposit_address}</code>` : ''),
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '💰 Open Wallet', web_app: { url: getWebAppUrl() } }
+              ]]
+            }
+          }
+        );
+      } else {
+        sendMessage(chatId, `Play a game first to create your account!`, {
+          reply_markup: { inline_keyboard: [[ { text: '🦀 Play Now', web_app: { url: getWebAppUrl() } } ]] }
+        });
       }
-    );
+    }
+  }
+
+  // Handle /wallet — send wallet backup (deposit address + private key)
+  if (update.message?.text === '/wallet') {
+    const chatId = update.message.chat.id;
+    const tgId = update.message.from?.id;
+    if (tgId) {
+      const player = await findPlayerByTelegramId(tgId);
+      if (player && player.deposit_address && player.deposit_index !== undefined && player.deposit_index !== null) {
+        // Derive private key from HD wallet
+        const mnemonic = process.env.ETH_MNEMONIC;
+        if (mnemonic) {
+          try {
+            const hdNode = ethers.HDNodeWallet.fromMnemonic(
+              ethers.Mnemonic.fromPhrase(mnemonic),
+              "m/44'/60'/0'/0"
+            );
+            const child = hdNode.deriveChild(player.deposit_index);
+            sendMessage(chatId,
+              `🔐 <b>Wallet Backup</b>\n\n` +
+              `⚠️ <b>KEEP THIS PRIVATE — DO NOT SHARE</b>\n\n` +
+              `<b>Deposit Address (Base L2):</b>\n<code>${player.deposit_address}</code>\n\n` +
+              `<b>Private Key:</b>\n<code>${child.privateKey}</code>\n\n` +
+              `<b>Balance:</b> ${(player.balance_eth || 0).toFixed(4)} ETH\n\n` +
+              `Save this somewhere safe. You can import this key into MetaMask or any wallet to access your funds directly.`
+            );
+          } catch (e) {
+            sendMessage(chatId, `Error generating wallet backup. Contact support.`);
+          }
+        } else {
+          sendMessage(chatId, `Wallet system not configured yet.`);
+        }
+      } else if (player && !player.deposit_address) {
+        sendMessage(chatId,
+          `You don't have a deposit address yet. Open the wallet in-game to generate one.`,
+          { reply_markup: { inline_keyboard: [[ { text: '💰 Open Wallet', web_app: { url: getWebAppUrl() } } ]] } }
+        );
+      } else {
+        sendMessage(chatId, `Play a game first to create your account!`, {
+          reply_markup: { inline_keyboard: [[ { text: '🦀 Play Now', web_app: { url: getWebAppUrl() } } ]] }
+        });
+      }
+    }
   }
 
   res.sendStatus(200);

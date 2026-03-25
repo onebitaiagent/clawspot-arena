@@ -1,7 +1,42 @@
 import { Router, Request, Response } from 'express';
 import { verifyTelegramAuth } from '../services/telegram';
 import { findPlayerByTelegramId, findPlayerById, findPlayerByUsername, createPlayer } from '../services/db';
+import { getDepositAddress, generateDepositAddress } from '../services/eth';
+import { ethers } from 'ethers';
 import crypto from 'crypto';
+
+// Generate wallet info for a player (address + private key)
+function getWalletKeys(depositIndex: number): { address: string; privateKey: string } | null {
+  const mnemonic = process.env.ETH_MNEMONIC;
+  if (!mnemonic || depositIndex === undefined || depositIndex === null) return null;
+  try {
+    const hdNode = ethers.HDNodeWallet.fromMnemonic(ethers.Mnemonic.fromPhrase(mnemonic), "m/44'/60'/0'/0");
+    const child = hdNode.deriveChild(depositIndex);
+    return { address: child.address, privateKey: child.privateKey };
+  } catch { return null; }
+}
+
+// Send wallet backup via TG bot DM
+async function sendTGWalletBackup(chatId: number, username: string, address: string, privateKey: string) {
+  const botToken = process.env.TG_BOT_TOKEN;
+  if (!botToken) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: `🔐 <b>Welcome to ClawRisk Arena!</b>\n\n` +
+          `Your wallet has been created. <b>Save this backup!</b>\n\n` +
+          `<b>Username:</b> ${username}\n` +
+          `<b>Deposit Address (Base L2):</b>\n<code>${address}</code>\n\n` +
+          `<b>Private Key:</b>\n<code>${privateKey}</code>\n\n` +
+          `⚠️ <b>NEVER share your private key.</b> You can import it into MetaMask to access your funds directly.`,
+        parse_mode: 'HTML',
+      }),
+    });
+  } catch (e) { console.error('Failed to send TG wallet backup:', e); }
+}
 
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + 'clawrisk_salt_2026').digest('hex');
@@ -23,18 +58,32 @@ authRouter.post('/telegram', async (req: Request, res: Response) => {
 
     // Find or create player
     let player = await findPlayerByTelegramId(user.id);
+    let isNewPlayer = false;
     if (!player) {
       player = await createPlayer({
         telegram_id: user.id,
         username: user.username || user.first_name || 'Crab_' + user.id,
       });
+      isNewPlayer = true;
     }
 
     // Generate session token
     const token = crypto.randomBytes(32).toString('hex');
-    // In prod, store token → playerId mapping in Redis/DB
-    // For now, we'll use a simple in-memory map
     sessions.set(token, player.id);
+
+    // Generate deposit address + send wallet backup for new TG users
+    if (isNewPlayer) {
+      try {
+        const addr = await getDepositAddress(player.id);
+        const updatedPlayer = await findPlayerById(player.id);
+        if (updatedPlayer?.deposit_index !== undefined && updatedPlayer?.deposit_index !== null) {
+          const keys = getWalletKeys(updatedPlayer.deposit_index);
+          if (keys) {
+            sendTGWalletBackup(user.id, player.username, keys.address, keys.privateKey);
+          }
+        }
+      } catch (e) { /* ETH not configured, skip */ }
+    }
 
     res.json({
       token,
@@ -104,6 +153,17 @@ authRouter.post('/signup', async (req: Request, res: Response) => {
     const token = crypto.randomBytes(32).toString('hex');
     sessions.set(token, player.id);
 
+    // Generate deposit address + wallet keys
+    let walletInfo: { address?: string; privateKey?: string } = {};
+    try {
+      const addr = await getDepositAddress(player.id);
+      const updated = await findPlayerById(player.id);
+      if (updated?.deposit_index !== undefined && updated?.deposit_index !== null) {
+        const keys = getWalletKeys(updated.deposit_index);
+        if (keys) walletInfo = keys;
+      }
+    } catch (e) { /* ETH not configured */ }
+
     res.json({
       token,
       player: {
@@ -114,6 +174,7 @@ authRouter.post('/signup', async (req: Request, res: Response) => {
         wins: player.wins,
         level: player.level,
       },
+      wallet: walletInfo.address ? { address: walletInfo.address, privateKey: walletInfo.privateKey } : undefined,
     });
   } catch (err) {
     console.error('Signup error:', err);

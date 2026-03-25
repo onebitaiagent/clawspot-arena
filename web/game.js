@@ -891,23 +891,29 @@ function handleTap(sx,sy){
   if(!cell)return;
   const pos=cellCenter(cell);
   // DEPLOY
-  if(game.phase==='deploy'){
-    const s=mySlot();
-    if(cell.owner===s&&game.reinforcements[s]>0){
-      if(net.online){
-        net.send({type:'deploy',cellIdx:cell.row*10+cell.col});
-      }
-      cell.troops++;game.reinforcements[s]--;
-      audio.play('troop_deploy');haptic('light');
-      spawnRipple(pos.x,pos.y,PLAYER_COLORS[s]);
-      spawnFloat(pos.x,pos.y-cellSize*.3,'+1','#00ff88');
-      spawnParticles(pos.x,pos.y,PLAYER_COLORS[s],5);
-      if(game.reinforcements[s]<=0){
-        game.phase='play';
-        if(game.tutorial===1) advanceTutorial(); // deploy done → select
-      }
-    } else if(cell.owner!==s) spawnFloat(pos.x,pos.y-10,'Your spots only!','#ff6666');
+  // DEPLOY — works in both deploy and play phase (reinforcements are optional)
+  const s0=mySlot();
+  if(game.reinforcements[s0]>0 && cell.owner===s0){
+    const deployCount = Math.min(game.reinforcements[s0], 3); // deploy up to 3 per tap
+    for(let i=0;i<deployCount;i++){
+      if(net.online) net.send({type:'deploy',cellIdx:cell.row*10+cell.col});
+      cell.troops++;game.reinforcements[s0]--;
+    }
+    audio.play('troop_deploy');haptic('light');
+    spawnRipple(pos.x,pos.y,PLAYER_COLORS[s0]);
+    spawnFloat(pos.x,pos.y-cellSize*.3,'+'+deployCount,'#00ff88');
+    spawnParticles(pos.x,pos.y,PLAYER_COLORS[s0],5);
+    if(game.reinforcements[s0]<=0 && game.phase==='deploy'){
+      game.phase='play';
+      if(game.tutorial===1) advanceTutorial();
+    }
     return;
+  }
+  // If in deploy phase but tapped non-owned cell, switch to play (save remaining troops)
+  if(game.phase==='deploy'){
+    game.phase='play';
+    if(game.tutorial===1) advanceTutorial();
+    // Fall through to normal play handling below
   }
   // FORTIFY
   if(game.fortifySource){
