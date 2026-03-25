@@ -45,7 +45,7 @@ const SPECIES_LIST = ['crab','octopus','lobster','turtle','jellyfish','shark'];
 
 const PLAYER_COLORS     = ['#00ff88','#ff4444','#4488ff','#ffaa00','#cc44ff','#00dddd'];
 const PLAYER_COLORS_DIM = ['#00994d','#991f1f','#1f5599','#996600','#772299','#009999'];
-const PLAYER_NAMES = ['You','Storm Kraken','Reef Lobster','Abyss Hunter'];
+const PLAYER_NAMES = ['You','Storm Kraken','Reef Lobster','Abyss Hunter','Drift Jelly','Sea Titan'];
 
 // === OCEANS (regions as real-world oceans) ===
 const TERRAIN = {
@@ -309,7 +309,8 @@ const net = {
 function handleServerMessage(msg) {
   switch (msg.type) {
     case 'state': {
-      // Full state sync from server
+      // Full state sync — only apply if we're in a server game, not local offline
+      if (!net.online) break; // ignore server state when playing offline
       const g = msg.game;
       for (let i = 0; i < g.cells.length && i < cells.length; i++) {
         cells[i].owner = g.cells[i].owner;
@@ -392,7 +393,8 @@ function handleServerMessage(msg) {
     }
 
     case 'fortify': {
-      cells[msg.fromIdx].troops = cells[msg.fromIdx].troops; // will be updated by next state sync
+      // Update from server state if provided
+      if (msg.from) cells[msg.fromIdx].troops = msg.from.troops;
       // Immediate visual
       const pos = cellCenter(cells[msg.toIdx]);
       if (msg.slot !== net.playerSlot) {
@@ -551,27 +553,16 @@ setInterval(() => { if (net.token) fetchEthBalance(); }, 30000);
 async function initGame() {
   game.floatingTexts=[];game.ripples=[];game.particles=[];
   game.selectedCell=null;game.combatState=null;
-  game.fortifySource=null;game.hint='';
+  game.fortifySource=null;game.hint='';game.troopPicker=null;
   game.winner=-1;
 
-  // Start offline immediately so the game is playable
+  // Free play = always offline with local AI
   initOfflineGame();
 
-  // Then try to connect to server in background (non-blocking)
-  if (!net.connecting) {
+  // Auth in background for wallet/account features (don't join server game)
+  if (!net.token && !net.connecting) {
     net.connecting = true;
-    try {
-      const authed = await net.auth();
-      if (authed) {
-        fetchEthBalance();
-        const joined = await net.joinGame('free');
-        if (joined) {
-          net.connectWS();
-        }
-      }
-    } catch(e) {
-      console.log('Server connection failed, playing offline');
-    }
+    try { await net.auth(); if(net.token) fetchEthBalance(); } catch(e) {}
     net.connecting = false;
   }
 }
@@ -687,24 +678,27 @@ function finishCombat() {
   game.qte = null;
 
   applyCombatResult(cs.attacker, cs.defender, cs.result);
-  screenShake(cs.result.captured ? 8 : 5, 0.4);
+  const wasCaptured = cs.defender.owner === cs.attacker.owner; // defender now owned by attacker
+  screenShake(wasCaptured ? 8 : 5, 0.4);
 }
 
 // === ECONOMY ===
 function doReinforcements(){
+  const me=mySlot();
   for(let p=0;p<4;p++){
     if(countTerritories(p)===0)continue;
     const t=calcReinforcements(p);game.reinforcements[p]+=t;
-    if(p===0){game.phase='deploy';spawnFloat(W/2,gridOffsetY-25,'+'+t+' troops!','#ffcc00');}
+    if(p===me){game.phase='deploy';spawnFloat(W/2,gridOffsetY-25,'+'+t+' troops!','#ffcc00');}
     else aiDeployReinforcements(p);
   }audio.play('reinforcements');
 }
 function doShellIncome(){
+  const me=mySlot();
   for(let p=0;p<4;p++){
     let inc=0;const rc=getRegionControl(p);
     for(const c of cells)if(c.owner===p){let m=TERRAIN[c.terrain].shellMult;if(rc.some(r=>c.region===r))m*=2;inc+=m;}
     const earned=Math.floor(inc);game.shells[p]+=earned;
-    if(p===0&&earned>0)spawnFloat(70*devicePixelRatio,22*devicePixelRatio,'+'+earned,'#ffcc00');
+    if(p===me&&earned>0)spawnFloat(70*devicePixelRatio,22*devicePixelRatio,'+'+earned,'#ffcc00');
   }
 }
 
@@ -722,7 +716,8 @@ const AI_STYLE = { 1: 'aggressive', 2: 'defensive', 3: 'expansionist' };
 
 function aiTurn(p){
   if(game.phase==='combat'||game.phase==='gameover')return;
-  if(game.attackCooldown[p]===-1||game.attackCooldown[p]>0||countTerritories(p)===0)return;
+  if(game.attackCooldown[p]===-1||countTerritories(p)===0)return;
+  if(game.attackCooldown[p]>0)return; // cooldown gates ALL actions (attack + fortify)
   const style = AI_STYLE[p] || 'aggressive';
 
   // Buy troops — aggressive buys more, defensive saves
@@ -960,6 +955,8 @@ function handleTap(sx,sy){
   }
   // SELECT / ATTACK
   const s=mySlot();
+  // Guard: clear stale selection if cell was captured by enemy
+  if(game.selectedCell && game.selectedCell.owner!==s) game.selectedCell=null;
   if(!game.selectedCell){
     if(cell.owner===s&&cell.troops>=1){
       game.selectedCell=cell;spawnRipple(pos.x,pos.y,PLAYER_COLORS[s]);audio.play('shell_earn');
@@ -3101,7 +3098,7 @@ function clearSavedGameState() {
 setInterval(saveGameState, 5000);
 
 // Clear save on game over
-const _origUpdate = update;
+// (dead code removed)
 // (we'll handle clearing in gameover tap instead)
 
 // Try to restore saved session + game state on load
