@@ -773,7 +773,7 @@ function aiTurn(p){
       ba.troops-=mv;bd.owner=p;bd.troops=mv;
       const dp=cellCenter(bd);
       spawnParticles(dp.x,dp.y,PLAYER_COLORS[p],6);
-      game.attackCooldown[p]=1+Math.random();
+      game.attackCooldown[p]=2+Math.random()*2;
     } else {
       startAICombat(ba,bd);
       game.attackCooldown[p]= style==='aggressive' ? 2+Math.random()*2 : 3+Math.random()*3;
@@ -908,21 +908,19 @@ function handleTap(sx,sy){
     return;
   }
 
-  // DEPLOY — works in both deploy and play phase
-  const s0=mySlot();
-  if(game.reinforcements[s0]>0 && cell.owner===s0){
-    const avail = game.reinforcements[s0];
-    if (avail <= 3) {
-      // Small amount — deploy all immediately
-      doDeploy(cell, avail, s0);
-    } else {
-      // Show picker: 1, half, all
-      showTroopPicker(pos.x, pos.y, avail, (count) => doDeploy(cell, count, s0));
-    }
-    return;
-  }
-  // If in deploy phase but tapped non-owned cell, switch to play
+  // DEPLOY — only in deploy phase (play phase uses select/attack)
   if(game.phase==='deploy'){
+    const s0=mySlot();
+    if(game.reinforcements[s0]>0 && cell.owner===s0){
+      const avail = game.reinforcements[s0];
+      if (avail <= 3) {
+        doDeploy(cell, avail, s0);
+      } else {
+        showTroopPicker(pos.x, pos.y, avail, (count) => doDeploy(cell, count, s0));
+      }
+      return;
+    }
+    // Tapped non-owned cell — switch to play, save remaining troops
     game.phase='play';
     if(game.tutorial===1) advanceTutorial();
   }
@@ -960,11 +958,11 @@ function handleTap(sx,sy){
     if(cell.troops<=0 && cell.owner===-1){
       const maxMove = game.selectedCell.troops - 1;
       const selCell = game.selectedCell;
-      if (maxMove <= 3) {
-        // Small amount — move all immediately
-        doClaimCell(selCell, cell, maxMove, s);
+      if (maxMove === 1) {
+        // Only 1 to move — just do it
+        doClaimCell(selCell, cell, 1, s);
       } else {
-        // Show picker
+        // Show picker — let player choose
         showTroopPicker(pos.x, pos.y, maxMove, (count) => doClaimCell(selCell, cell, count, s));
         game.selectedCell = null;
       }
