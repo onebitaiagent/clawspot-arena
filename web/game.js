@@ -2119,22 +2119,23 @@ function drawHUD() {
     ctx.fillText('\u{1F4B0}', walX + muteSize/2, muteY + muteSize*0.62);
     game._walletBtnRect2 = { x: walX, y: muteY, w: muteSize, h: muteSize };
 
-    // ETH balance + username
+    // ETH balance + username — show LEFT of wallet button, not below
     ctx.font = `${Math.max(8*dpr,9)}px monospace`;
     ctx.textAlign = 'right';
+    const infoX = walX - 6 * dpr;
     if (game._ethBalance) {
       ctx.fillStyle = '#ffcc00';
-      ctx.fillText(game._ethBalance + ' ETH', muteX + muteSize, muteY + muteSize + 14 * dpr);
+      ctx.fillText(game._ethBalance + ' ETH', infoX, muteY + muteSize * 0.35);
     }
     if (net.username) {
       ctx.fillStyle = '#00ff88';
-      ctx.fillText(net.username, muteX + muteSize, muteY + muteSize + 26 * dpr);
+      ctx.fillText(net.username, infoX, muteY + muteSize * 0.75);
     }
   }
 
-  // Reset button (bottom-left)
+  // Reset button (bottom-left, aligned with buy/fortify buttons)
   const rstW = 50 * dpr, rstH = 22 * dpr;
-  const rstX = 8 * dpr, rstY = H - rstH - 70 * dpr;
+  const rstX = 8 * dpr, rstY = btnY + (btnH - rstH) / 2;
   ctx.fillStyle = 'rgba(20,12,12,0.7)';
   roundRect(ctx, rstX, rstY, rstW, rstH, 5); ctx.fill();
   ctx.strokeStyle = '#ff444444'; ctx.lineWidth = 1;
