@@ -188,10 +188,14 @@ body { min-height:100vh; overflow-x:hidden; }
 <nav class="nav">
   <div class="nav-logo"><span>CLAWRISK </span><span>ARENA</span></div>
   <div class="nav-right">
-    <!-- Logged-out state -->
-    <div id="navLoggedOut">
+    <!-- Logged-out state (hidden if in TG until auth completes) -->
+    <div id="navLoggedOut" style="display:none">
       <a class="btn btn-green btn-sm" href="#" onclick="showSignup();return false">Create Account</a>
-      <a class="btn btn-sm" style="border-color:#888;color:#888" href="https://t.me/clawrisk_bot" target="_blank">Open in TG</a>
+      <a class="btn btn-sm" style="border-color:#888;color:#888" href="https://t.me/clawrisk_bot" target="_blank" id="openInTgBtn">Open in TG</a>
+    </div>
+    <!-- Loading state for TG users -->
+    <div id="navLoading" style="display:none">
+      <span style="color:#888;font-size:12px">Connecting...</span>
     </div>
     <!-- Logged-in state -->
     <div id="navLoggedIn" style="display:none">
@@ -676,13 +680,24 @@ function showLoggedIn(username, balance) {
 
 // Auto-login on page load — only restore saved session, never create guest
 async function autoLogin() {
+  const tgApp = window.Telegram?.WebApp;
+  const isTG = !!(tgApp && tgApp.initData);
+
+  // If in TG, show loading state; otherwise show logged-out buttons
+  if (isTG) {
+    document.getElementById('navLoading').style.display = 'block';
+    document.getElementById('navLoggedOut').style.display = 'none';
+  } else {
+    document.getElementById('navLoading').style.display = 'none';
+    document.getElementById('navLoggedOut').style.display = 'flex';
+  }
+
   // Check for saved token
   let saved = null;
   try { saved = localStorage.getItem('clawrisk_token'); } catch(e) {}
 
   // TG auth if inside Telegram
-  const tgApp = window.Telegram?.WebApp;
-  if (!saved && tgApp && tgApp.initData) {
+  if (!saved && isTG) {
     try {
       const res = await fetch('/api/auth/telegram', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -696,7 +711,14 @@ async function autoLogin() {
     } catch(e) {}
   }
 
-  if (!saved) return; // not logged in — show signup buttons
+  if (!saved) {
+    // Not logged in — show appropriate buttons
+    document.getElementById('navLoading').style.display = 'none';
+    document.getElementById('navLoggedOut').style.display = 'flex';
+    // Hide "Open in TG" if already in TG
+    if (isTG) document.getElementById('openInTgBtn').style.display = 'none';
+    return;
+  }
 
   // Validate saved token
   try {

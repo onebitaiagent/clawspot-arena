@@ -1029,8 +1029,10 @@ function showTroopPicker(cx, cy, maxCount, callback) {
   const half = Math.ceil(maxCount / 2);
   const options = [{ label: '1', count: 1 }, { label: '\u00BD', count: half }, { label: 'ALL', count: maxCount }];
   const totalW = options.length * (btnW + gap) - gap;
-  const startX = cx - totalW / 2;
-  const startY = cy - cellSize - btnH - 10 * dpr;
+  // Clamp within screen bounds
+  let startX = Math.max(8, Math.min(cx - totalW / 2, W - totalW - 8));
+  let startY = cy - cellSize - btnH - 10 * dpr;
+  if (startY < 80 * dpr) startY = cy + cellSize + 10 * dpr; // flip below if too high
 
   game.troopPicker = {
     x: cx, y: cy,
